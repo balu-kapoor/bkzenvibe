@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { PlusCircle, FileText, Image, FileUp, Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -13,8 +13,30 @@ interface ChatSession {
 
 export function ChatLayout() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeSession, setActiveSession] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Check if device is mobile on initial render and when window resizes
+  useEffect(() => {
+    const checkIfMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    // Set initial value
+    checkIfMobile();
+    
+    // Add event listener for window resize
+    window.addEventListener('resize', checkIfMobile);
+    
+    // Clean up event listener
+    return () => window.removeEventListener('resize', checkIfMobile);
+  }, []);
+
+  // Set sidebar state based on device type
+  useEffect(() => {
+    setIsSidebarOpen(!isMobile);
+  }, [isMobile]);
 
   const createNewChat = () => {
     const newSession: ChatSession = {
