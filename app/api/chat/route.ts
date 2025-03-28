@@ -115,112 +115,134 @@ function createEnhancedStreamingResponse(
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   
+  // Buffer for incomplete chunks
+  let buffer = '';
+  
   const stream = new TransformStream({
     async transform(chunk, controller) {
       try {
         const text = decoder.decode(chunk);
-        const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
         
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
+        // Add to buffer and process
+        buffer += text;
+        
+        // Split by SSE format (data: ...\n\n)
+        const regex = /(data: (.+?))\r?\n\r?\n/g;
+        let match;
+        let lastIndex = 0;
+        
+        // Process complete SSE messages
+        while ((match = regex.exec(buffer)) !== null) {
+          const data = match[2]; // The actual data part
+          lastIndex = match.index + match[0].length;
+          
+          if (data === '[DONE]') {
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            continue;
+          }
+          
+          try {
+            // Parse the JSON data
+            const parsed = JSON.parse(data);
             
-            if (data === '[DONE]') {
-              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-              continue;
+            // Extract content from various response formats
+            const content = parsed.choices?.[0]?.delta?.content || 
+                          parsed.choices?.[0]?.message?.content || 
+                          '';
+            
+            if (content) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+            }
+          } catch (parseError) {
+            console.error('Error parsing JSON:', parseError);
+            
+            // Advanced JSON repair strategies
+            let extractedContent = '';
+            let repairSuccessful = false;
+            
+            // Strategy 1: Extract content field with regex
+            const contentRegex = /"content":"((?:\\.|[^"\\])*)"/;
+            const contentMatch = contentRegex.exec(data);
+            if (contentMatch && contentMatch[1]) {
+              extractedContent = contentMatch[1]
+                .replace(/\\"/g, '"')
+                .replace(/\\\\/g, '\\');
+              repairSuccessful = true;
             }
             
-            try {
-              // Parse the JSON data
-              const parsed = JSON.parse(data);
-              
-              // Handle both OpenAI-style and OpenRouter-style streaming responses
-              const content = parsed.choices?.[0]?.delta?.content || 
-                            parsed.choices?.[0]?.message?.content || 
-                            '';
-              
-              if (content) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+            // Strategy 2: Handle code blocks specifically
+            if (!repairSuccessful && (data.includes('```') || data.includes('\\n```'))) {
+              const codeBlockRegex = /"content":"((?:\\.|[^"])*?)(?:\\n```|```)/;
+              const codeMatch = codeBlockRegex.exec(data);
+              if (codeMatch && codeMatch[1]) {
+                extractedContent = codeMatch[1]
+                  .replace(/\\"/g, '"')
+                  .replace(/\\\\/g, '\\');
+                repairSuccessful = true;
               }
-            } catch (e) {
-              console.error('Error parsing chunk:', e);
-              
-              // Enhanced Error Recovery
-              try {
-                // Get diagnostic info
-                const errorMessage = (e as Error).message;
-                const positionMatch = /position (\d+)/.exec(errorMessage);
-                const errorPosition = positionMatch ? parseInt(positionMatch[1]) : -1;
-                
-                // Check for code blocks which often cause issues
-                const hasCodeBlock = 
-                  data.includes('```') || 
-                  data.includes('\\n```') || 
-                  data.includes('code fence');
-                
-                // Apply recovery strategy
-                let content = '';
-                let recoverySuccessful = false;
-                
-                // Strategy 1: Handle special cases with code blocks
-                if (hasCodeBlock) {
-                  const codeMatch = /"content":"(.*?)(?:",|"})/.exec(data);
-                  if (codeMatch && codeMatch[1]) {
-                    content = codeMatch[1]
-                      .replace(/\\"/g, '"')
-                      .replace(/\\\\/g, '\\');
-                    
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
-                    recoverySuccessful = true;
-                  }
-                }
-                
-                // Strategy 2: Truncate at the error position
-                if (!recoverySuccessful && errorPosition > 0) {
-                  try {
-                    const truncated = data.substring(0, errorPosition);
-                    const lastValidQuotePos = truncated.lastIndexOf('"');
-                    
-                    if (lastValidQuotePos > 0) {
-                      const partialJson = truncated.substring(0, lastValidQuotePos) + '"}';
-                      try {
-                        const partialParsed = JSON.parse(partialJson);
-                        const partialContent = partialParsed.choices?.[0]?.delta?.content || '';
-                        
-                        if (partialContent) {
-                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: partialContent })}\n\n`));
-                          recoverySuccessful = true;
-                        }
-                      } catch {
-                        // Failed to parse partial JSON
-                      }
-                    }
-                  } catch {
-                    // Failed truncation strategy
-                  }
-                }
-                
-                // Strategy 3: Direct regex extraction as a last resort
-                if (!recoverySuccessful) {
-                  const contentMatch = /"(?:content|text)":"([^"]*)/.exec(data);
-                  if (contentMatch && contentMatch[1]) {
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: contentMatch[1] })}\n\n`));
-                  } else {
-                    // Send a space to keep the stream alive
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: ' ' })}\n\n`));
-                  }
-                }
-              } catch (finalError) {
-                console.error('All recovery strategies failed:', finalError);
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: ' ' })}\n\n`));
+            }
+            
+            // Strategy 3: Extract any text between quotes after "content":
+            if (!repairSuccessful) {
+              const simpleExtract = /"content":"([^"]*)/.exec(data);
+              if (simpleExtract && simpleExtract[1]) {
+                extractedContent = simpleExtract[1];
+                repairSuccessful = true;
               }
+            }
+            
+            // Strategy 4: Last resort - extract anything that looks like content
+            if (!repairSuccessful) {
+              // Look for any text between quotes
+              const anyTextMatch = /"([^"]+)"/.exec(data);
+              if (anyTextMatch && anyTextMatch[1] && anyTextMatch[1].length > 5) {
+                extractedContent = anyTextMatch[1];
+                repairSuccessful = true;
+              }
+            }
+            
+            // If we extracted anything, send it
+            if (repairSuccessful && extractedContent) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: extractedContent })}\n\n`));
+            } else {
+              // If all strategies failed, send a space to keep the stream alive
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: ' ' })}\n\n`));
             }
           }
+        }
+        
+        // Keep the unprocessed part in the buffer
+        if (lastIndex > 0) {
+          buffer = buffer.slice(lastIndex);
+        }
+        
+        // If buffer gets too large, truncate it (prevent memory issues)
+        if (buffer.length > 10000) {
+          buffer = buffer.slice(buffer.length - 5000);
         }
       } catch (error) {
         console.error('Stream processing error:', error);
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Stream processing error' })}\n\n`));
       }
+    },
+    
+    // Process any remaining buffer data when the stream closes
+    flush(controller) {
+      if (buffer.length > 0) {
+        try {
+          // Try to extract any remaining content from the buffer
+          const contentMatch = /"content":"([^"]*)"/.exec(buffer);
+          if (contentMatch && contentMatch[1]) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: contentMatch[1] })}\n\n`));
+          }
+        } catch (e) {
+          // Ignore errors in flush
+        }
+      }
+      
+      // Clean up
+      buffer = '';
+      requestCounts.delete(ip);
     }
   });
 
