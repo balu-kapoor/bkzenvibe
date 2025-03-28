@@ -5,7 +5,7 @@ import { ScrollArea } from "./ui/scroll-area";
 import { MessageContent } from "./message-content";
 import { 
   Loader2, Square, Send, User, Paperclip, FileText, 
-  File, X, Image as ImageIcon, FileCode, File as FilePdf 
+  File as FilePdf 
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { 
@@ -90,30 +90,53 @@ export function Chat() {
   }, []);
 
   const getFileIcon = (type: string, mimeType?: string) => {
-    if (type === "image") return <ImageIcon className="h-4 w-4 text-blue-500" />;
+    if (type === "image") return <FileText className="h-4 w-4 text-blue-500" />;
     if (type === "pdf") return <FilePdf className="h-4 w-4 text-red-500" />;
     if (type === "code" || mimeType?.includes("application/json") || mimeType?.includes("text/html")) 
-      return <FileCode className="h-4 w-4 text-green-500" />;
+      return <FileText className="h-4 w-4 text-green-500" />;
     return <FileText className="h-4 w-4 text-gray-500" />;
   };
 
   const getFileType = (file: File): "image" | "pdf" | "code" | "document" => {
     if (file.type.startsWith("image/")) return "image";
     if (file.type === "application/pdf") return "pdf";
+    
+    // Expanded list of programming file extensions
+    const codeExtensions = [
+      // Web development
+      ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".scss", ".sass", ".less",
+      // Backend
+      ".py", ".rb", ".php", ".java", ".cs", ".go", ".rs", ".c", ".cpp", ".h", ".hpp",
+      // Data/Config
+      ".json", ".xml", ".yaml", ".yml", ".toml", ".ini", ".env",
+      // Mobile
+      ".swift", ".kt", ".m", ".mm",
+      // Shell/Scripts
+      ".sh", ".bash", ".zsh", ".ps1", ".bat", ".cmd",
+      // Other languages
+      ".lua", ".r", ".pl", ".ex", ".exs", ".erl", ".fs", ".fsx", ".dart", ".scala",
+      // Markup/Documentation
+      ".md", ".mdx", ".rst", ".tex",
+      // Database
+      ".sql", ".graphql", ".prisma",
+    ];
+    
+    // Check file extension against the list
+    const extension = "." + file.name.split('.').pop()?.toLowerCase();
+    if (codeExtensions.includes(extension)) return "code";
+    
+    // Check MIME type for code-related content
     if (
       file.type.includes("javascript") || 
       file.type.includes("typescript") || 
       file.type.includes("json") || 
       file.type.includes("html") || 
       file.type.includes("css") ||
-      file.name.endsWith(".js") ||
-      file.name.endsWith(".ts") ||
-      file.name.endsWith(".jsx") ||
-      file.name.endsWith(".tsx") ||
-      file.name.endsWith(".json") ||
-      file.name.endsWith(".html") ||
-      file.name.endsWith(".css")
+      file.type.includes("text/x-") ||  // Many code MIME types start with text/x-
+      file.type.includes("application/x-") ||
+      file.type.includes("text/plain") // Plain text could be code
     ) return "code";
+    
     return "document";
   };
 
@@ -130,14 +153,36 @@ export function Chat() {
         return;
       }
 
+      // Handle PDF files
+      if (file.type === "application/pdf") {
+        // For PDFs, we'll just provide a clear message and let the user describe the content
+        const pdfInfo = `[PDF ATTACHED: ${file.name} (${formatFileSize(file.size)})]
+
+I've attached a PDF document to this message. Please note:
+
+• This system cannot automatically read or analyze PDF contents
+• The AI will not try to guess what's in the PDF based on the filename
+• For best results, please:
+  1. Briefly describe what this PDF contains in your own words
+  2. Ask specific questions about the content you're interested in
+  3. If needed, quote relevant sections from the PDF in your message
+
+The AI will respond based on your description and questions, not based on any automatic analysis of the PDF.`;
+
+        resolve(pdfInfo);
+        return;
+      }
+      
+      // Handle DOC/DOCX files
+      if (file.type === "application/msword" || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+        // For Word documents, we would need a specialized library like mammoth.js
+        // This is a placeholder for future implementation
+        resolve(`[Word document: ${file.name} - Text extraction not implemented yet. Please convert to PDF or plain text for better results.]`);
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = (e) => {
-        // For binary files like PDFs, we'll just mention it's a binary file
-        if (file.type === "application/pdf") {
-          resolve(`[This is a PDF file: ${file.name}]`);
-          return;
-        }
-        
         // For text files, limit the content size to prevent overwhelming the LLM
         const content = e.target?.result as string;
         const maxLength = 5000; // Limit to 5000 characters
@@ -152,28 +197,46 @@ export function Chat() {
         reject(e);
       };
 
+      // Expanded list of text-based file extensions
+      const textExtensions = [
+        // Web development
+        ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".scss", ".sass", ".less",
+        // Backend
+        ".py", ".rb", ".php", ".java", ".cs", ".go", ".rs", ".c", ".cpp", ".h", ".hpp",
+        // Data/Config
+        ".json", ".xml", ".yaml", ".yml", ".toml", ".ini", ".env",
+        // Mobile
+        ".swift", ".kt",
+        // Shell/Scripts
+        ".sh", ".bash", ".zsh", ".ps1", ".bat", ".cmd",
+        // Other languages
+        ".lua", ".r", ".pl", ".ex", ".exs", ".erl", ".fs", ".fsx", ".dart", ".scala",
+        // Markup/Documentation
+        ".md", ".mdx", ".rst", ".tex",
+        // Database
+        ".sql", ".graphql", ".prisma",
+        // Plain text
+        ".txt", ".log",
+      ];
+      
+      // Check file extension against the list
+      const extension = "." + file.name.split('.').pop()?.toLowerCase();
+      
       // Use readAsText for text files, readAsDataURL for binary files
-      if (file.type === "application/pdf") {
-        reader.readAsDataURL(file);
-      } else if (
+      if (
+        textExtensions.includes(extension) ||
         file.type.includes("text") || 
         file.type.includes("javascript") || 
+        file.type.includes("typescript") || 
         file.type.includes("json") || 
         file.type.includes("html") || 
         file.type.includes("css") ||
-        file.name.endsWith(".js") ||
-        file.name.endsWith(".ts") ||
-        file.name.endsWith(".jsx") ||
-        file.name.endsWith(".tsx") ||
-        file.name.endsWith(".json") ||
-        file.name.endsWith(".html") ||
-        file.name.endsWith(".css") ||
-        file.name.endsWith(".txt") ||
-        file.name.endsWith(".md")
+        file.type.includes("application/x-") ||
+        file.type.includes("text/x-")
       ) {
         reader.readAsText(file);
       } else {
-        // For unknown file types, just read as text and hope for the best
+        // For unknown file types, try to read as text first
         reader.readAsText(file);
       }
     });
@@ -503,7 +566,7 @@ export function Chat() {
                   className="h-5 w-5" 
                   onClick={() => removeFile(index)}
                 >
-                  <X className="h-3 w-3" />
+                  <Square className="h-3 w-3" />
                 </Button>
               </div>
             ))}
@@ -519,7 +582,7 @@ export function Chat() {
             ref={fileInputRef}
             className='hidden'
             multiple
-            accept='image/*,.pdf,.doc,.docx,.txt,.json,.js,.ts,.jsx,.tsx,.html,.css,.md'
+            accept='image/*,.pdf,.doc,.docx,.txt,.json,.js,.ts,.jsx,.tsx,.html,.css,.md,.py,.rb,.php,.java,.cs,.go,.rs,.c,.cpp,.h,.hpp,.scss,.sass,.less,.yaml,.yml,.toml,.ini,.env,.swift,.kt,.sh,.bash,.zsh,.ps1,.bat,.cmd,.lua,.r,.pl,.ex,.exs,.erl,.fs,.fsx,.dart,.scala,.mdx,.rst,.tex,.sql,.graphql,.prisma,.xml'
             onChange={handleFileChange}
           />
           <TooltipProvider>
