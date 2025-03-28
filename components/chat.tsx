@@ -68,9 +68,12 @@ export function Chat() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [previewFile, setPreviewFile] = useState<{url: string, type: string, name: string} | null>(null);
+  const [isStreamStuck, setIsStreamStuck] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastActivityTimestampRef = useRef<number>(Date.now());
+  const stuckCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -317,8 +320,30 @@ The AI will respond based on your description and questions, not based on any au
     setAttachedFiles([]);
     setIsLoading(true);
     setStreamingContent("");
+    setIsStreamStuck(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
     abortControllerRef.current = new AbortController();
+
+    // Set up the stuck check interval
+    if (stuckCheckIntervalRef.current) {
+      clearInterval(stuckCheckIntervalRef.current);
+    }
+    
+    lastActivityTimestampRef.current = Date.now();
+    stuckCheckIntervalRef.current = setInterval(() => {
+      const currentTime = Date.now();
+      const timeSinceLastActivity = currentTime - lastActivityTimestampRef.current;
+      
+      // If no activity for 15 seconds and we're still loading, consider it stuck
+      if (isLoading && timeSinceLastActivity > 15000) {
+        setIsStreamStuck(true);
+        // Once we've determined it's stuck, we can clear the interval
+        if (stuckCheckIntervalRef.current) {
+          clearInterval(stuckCheckIntervalRef.current);
+          stuckCheckIntervalRef.current = null;
+        }
+      }
+    }, 5000); // Check every 5 seconds
 
     try {
       console.log("Sending file content:", fileContent); // Debug log
@@ -360,10 +385,18 @@ The AI will respond based on your description and questions, not based on any au
       }, 60000); // 60 seconds timeout
 
       let accumulatedContent = "";
+      
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
+        // Update activity timestamp whenever we receive data
+        lastActivityTimestampRef.current = Date.now();
+        // Reset the stuck state if we were previously stuck
+        if (isStreamStuck) {
+          setIsStreamStuck(false);
+        }
+        
         const chunk = new TextDecoder().decode(value);
         const lines = chunk.split("\n");
 
@@ -383,6 +416,8 @@ The AI will respond based on your description and questions, not based on any au
               if (parsed.content) {
                 accumulatedContent += parsed.content;
                 setStreamingContent(accumulatedContent);
+                // Update activity timestamp
+                lastActivityTimestampRef.current = Date.now();
               }
             } catch (e) {
               console.error("Error parsing chunk:", e);
@@ -430,6 +465,13 @@ The AI will respond based on your description and questions, not based on any au
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
+      
+      // Clear the stuck check interval
+      if (stuckCheckIntervalRef.current) {
+        clearInterval(stuckCheckIntervalRef.current);
+        stuckCheckIntervalRef.current = null;
+      }
+      
       setIsLoading(false);
       setStreamingContent("");
       abortControllerRef.current = null;
@@ -441,6 +483,43 @@ The AI will respond based on your description and questions, not based on any au
       abortControllerRef.current.abort();
       setIsLoading(false);
       setStreamingContent("");
+      setIsStreamStuck(false);
+      
+      // Clear the stuck check interval
+      if (stuckCheckIntervalRef.current) {
+        clearInterval(stuckCheckIntervalRef.current);
+        stuckCheckIntervalRef.current = null;
+      }
+    }
+  };
+  
+  // Function to handle continuing a stuck response
+  const handleContinueResponse = () => {
+    // Get the last user message
+    const lastUserMessageIndex = messages.findLastIndex(msg => msg.role === "user");
+    if (lastUserMessageIndex >= 0) {
+      // Create a new message with the same content but add a note
+      const lastUserMessage = messages[lastUserMessageIndex];
+      const continuationMessage: Message = {
+        role: "user",
+        content: lastUserMessage.content + "\n\n[Please continue your previous response]",
+        attachments: lastUserMessage.attachments,
+      };
+      
+      // Add the continuation message and submit
+      setMessages(prev => [...prev]);
+      setInput("");
+      setIsLoading(true);
+      setStreamingContent("");
+      setIsStreamStuck(false);
+      
+      // Reset activity timestamp
+      lastActivityTimestampRef.current = Date.now();
+      
+      // Submit the continuation message
+      handleSubmit({
+        preventDefault: () => {},
+      } as React.FormEvent);
     }
   };
 
@@ -526,18 +605,56 @@ The AI will respond based on your description and questions, not based on any au
               </div>
               <div className='bg-muted rounded-2xl px-4 py-3'>
                 <MessageContent content={streamingContent} />
-                <span className='inline-block w-2 h-4 ml-1 bg-primary animate-pulse' />
+                <span className='inline-flex ml-1'>
+                  <span className='h-1.5 w-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]'></span>
+                  <span className='h-1.5 w-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s] mx-1'></span>
+                  <span className='h-1.5 w-1.5 bg-primary rounded-full animate-bounce'></span>
+                </span>
               </div>
             </div>
           )}
-          {isLoading && !streamingContent && (
+          {isStreamStuck && (
             <div className='flex items-start gap-4 max-w-full'>
               <div className='w-8 h-8 rounded-full flex items-center justify-center overflow-hidden'>
                 <AIBotIcon />
               </div>
-              <div className='bg-muted rounded-2xl px-4 py-3 flex items-center gap-2'>
-                <Loader2 className='h-4 w-4 animate-spin text-primary' />
-                <span>Thinking...</span>
+              <div className='bg-yellow-100 dark:bg-yellow-900 rounded-2xl px-4 py-3 flex flex-col gap-2'>
+                <p className='text-sm text-yellow-800 dark:text-yellow-200'>
+                  The response seems to be taking longer than expected or may have stopped.
+                </p>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="self-start"
+                    onClick={handleContinueResponse}
+                  >
+                    <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                    Continue Response
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="self-start"
+                    onClick={handleStop}
+                  >
+                    <Square className="h-3 w-3 mr-2" />
+                    Stop
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+          {isLoading && !streamingContent && !isStreamStuck && (
+            <div className='flex items-start gap-4 max-w-full'>
+              <div className='w-8 h-8 rounded-full flex items-center justify-center overflow-hidden'>
+                <AIBotIcon />
+              </div>
+              <div className='bg-muted rounded-2xl px-4 py-3'>
+                <div className='flex items-center gap-2'>
+                  <Loader2 className='h-4 w-4 animate-spin' />
+                  <p className='text-sm'>Thinking...</p>
+                </div>
               </div>
             </div>
           )}
