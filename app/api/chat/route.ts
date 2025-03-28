@@ -53,14 +53,9 @@ export async function POST(req: Request) {
     const { messages, fileContent } = await req.json();
 
     if (!OPENROUTER_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: 'OpenRouter API key is not configured' }),
-        { 
-          status: 500,
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        }
+      return NextResponse.json(
+        { error: 'OpenRouter API key is not configured' },
+        { status: 500 }
       );
     }
 
@@ -83,10 +78,6 @@ export async function POST(req: Request) {
           }
         ]
       : messages;
-
-    console.log('Making request to OpenRouter API...');
-    console.log('API URL:', OPENROUTER_API_URL);
-    console.log('Referer:', process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
 
     const response = await fetch(OPENROUTER_API_URL, {
       method: 'POST',
@@ -111,155 +102,19 @@ export async function POST(req: Request) {
       
       try {
         const error = JSON.parse(errorText);
-        return new Response(
-          `data: ${JSON.stringify({ content: `Error: ${error.error || error.message || 'Unknown error occurred'}` })}\n\ndata: [DONE]\n\n`,
-          {
-            headers: {
-              'Content-Type': 'text/event-stream',
-              'Cache-Control': 'no-cache',
-              'Connection': 'keep-alive',
-            },
-          }
+        return NextResponse.json(
+          { error: error.error || error.message || 'Unknown error occurred' },
+          { status: response.status }
         );
       } catch {
-        return new Response(
-          `data: ${JSON.stringify({ content: `Error: ${errorText || 'Unknown error occurred'}` })}\n\ndata: [DONE]\n\n`,
-          {
-            headers: {
-              'Content-Type': 'text/event-stream',
-              'Cache-Control': 'no-cache',
-              'Connection': 'keep-alive',
-            },
-          }
+        return NextResponse.json(
+          { error: errorText || 'Unknown error occurred' },
+          { status: response.status }
         );
       }
     }
 
-    // Create a TransformStream to process the response
-    let partialData = '';
-    
-    const stream = new TransformStream({
-      async transform(chunk, controller) {
-        const text = new TextDecoder().decode(chunk);
-        
-        // Combine with any leftover partial data
-        const fullText = partialData + text;
-        partialData = '';
-        
-        // Split into lines and process each one
-        const lines = fullText.split(/\n/);
-        
-        // Process all lines except the last one (which might be incomplete)
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i].trim();
-          if (!line) continue;
-          
-          // If this is the last line and doesn't end with a newline, save it for later
-          if (i === lines.length - 1 && !text.endsWith('\n')) {
-            partialData = line;
-            continue;
-          }
-          
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') {
-              controller.enqueue('data: [DONE]\n\n');
-              continue;
-            }
-            
-            // Handle the data
-            try {
-              const parsed = JSON.parse(data);
-              const content = parsed.choices?.[0]?.delta?.content || 
-                            parsed.choices?.[0]?.message?.content || 
-                            '';
-              
-              if (content) {
-                // Process content to handle special characters and code blocks
-                const processedContent = content
-                  .replace(/\\n/g, '\n')
-                  .replace(/\\`/g, '`')
-                  .replace(/\\\\/g, '\\')
-                  .replace(/\\"/g, '"');
-                
-                controller.enqueue(`data: ${JSON.stringify({ content: processedContent })}\n\n`);
-              }
-            } catch (e) {
-              // If we get a JSON parse error, try to recover the content
-              try {
-                // First, try to fix common JSON issues
-                let fixedData = data;
-                
-                // 1. Fix unclosed quotes at the end
-                if (fixedData.match(/"[^"]*$/)) {
-                  fixedData += '"';
-                }
-                
-                // 2. Fix unclosed braces
-                const openBraces = (fixedData.match(/{/g) || []).length;
-                const closeBraces = (fixedData.match(/}/g) || []).length;
-                if (openBraces > closeBraces) {
-                  fixedData += '}'.repeat(openBraces - closeBraces);
-                }
-                
-                try {
-                  // Try parsing the fixed data
-                  const parsed = JSON.parse(fixedData);
-                  const content = parsed.choices?.[0]?.delta?.content || 
-                                parsed.choices?.[0]?.message?.content || 
-                                '';
-                  
-                  if (content) {
-                    controller.enqueue(`data: ${JSON.stringify({ content })}\n\n`);
-                  }
-                } catch {
-                  // If fixing didn't work, try regex extraction
-                  const contentMatch = /"content":"((?:[^"\\]|\\.)*)"/.exec(data);
-                  if (contentMatch && contentMatch[1]) {
-                    const content = contentMatch[1]
-                      .replace(/\\n/g, '\n')
-                      .replace(/\\`/g, '`')
-                      .replace(/\\\\/g, '\\')
-                      .replace(/\\"/g, '"');
-                    
-                    controller.enqueue(`data: ${JSON.stringify({ content })}\n\n`);
-                  } else {
-                    // Last resort: try to extract any text between content markers
-                    const lastResortMatch = /content"?\s*:\s*"([^"]*)"/.exec(data);
-                    if (lastResortMatch && lastResortMatch[1]) {
-                      controller.enqueue(`data: ${JSON.stringify({ content: lastResortMatch[1] })}\n\n`);
-                    }
-                  }
-                }
-              } catch (recoveryError) {
-                console.error('Recovery failed:', recoveryError);
-                // Keep the stream alive with a space character
-                controller.enqueue(`data: ${JSON.stringify({ content: ' ' })}\n\n`);
-              }
-            }
-          }
-        }
-      },
-      flush(controller) {
-        // Process any remaining partial data when the stream ends
-        if (partialData) {
-          try {
-            const parsed = JSON.parse(partialData);
-            const content = parsed.choices?.[0]?.delta?.content || 
-                          parsed.choices?.[0]?.message?.content || 
-                          '';
-            
-            if (content) {
-              controller.enqueue(`data: ${JSON.stringify({ content })}\n\n`);
-            }
-          } catch {
-            // Ignore parsing errors in the final flush
-          }
-        }
-      }
-    });
-
-    return new Response(response.body?.pipeThrough(stream), {
+    return new Response(response.body, {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -268,14 +123,9 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error('Chat API Error:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      }
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
     );
   }
 }
