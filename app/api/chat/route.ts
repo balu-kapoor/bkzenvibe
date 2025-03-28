@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const MAX_RETRIES = 3;
+const TIMEOUT = 30000; // 30 seconds
 
 // Function to check if the message is asking about the model
 function isAskingAboutModel(message: string): boolean {
@@ -48,6 +50,28 @@ function createCustomStreamingResponse(content: string) {
   });
 }
 
+async function fetchWithRetry(url: string, options: RequestInit, retries = MAX_RETRIES): Promise<Response> {
+  try {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), TIMEOUT);
+    
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    if (retries > 0) {
+      console.log(`Retrying request, ${retries} attempts remaining...`);
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retrying
+      return fetchWithRetry(url, options, retries - 1);
+    }
+    throw error;
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const { messages, fileContent } = await req.json();
@@ -79,7 +103,7 @@ export async function POST(req: Request) {
         ]
       : messages;
 
-    const response = await fetch(OPENROUTER_API_URL, {
+    const response = await fetchWithRetry(OPENROUTER_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -97,21 +121,12 @@ export async function POST(req: Request) {
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenRouter API Error:', errorText);
-      
-      try {
-        const error = JSON.parse(errorText);
-        return NextResponse.json(
-          { error: error.error || error.message || 'Unknown error occurred' },
-          { status: response.status }
-        );
-      } catch {
-        return NextResponse.json(
-          { error: errorText || 'Unknown error occurred' },
-          { status: response.status }
-        );
-      }
+      const error = await response.json();
+      console.error('OpenRouter API Error:', error);
+      return NextResponse.json(
+        { error: error.message || 'Failed to fetch response' },
+        { status: response.status }
+      );
     }
 
     return new Response(response.body, {
@@ -121,10 +136,14 @@ export async function POST(req: Request) {
         'Connection': 'keep-alive',
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Chat API Error:', error);
+    const errorMessage = error.code === 'UND_ERR_CONNECT_TIMEOUT' 
+      ? 'Connection timeout. Please try again.'
+      : 'Internal server error';
+    
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: errorMessage },
       { status: 500 }
     );
   }
