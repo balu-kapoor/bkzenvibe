@@ -53,9 +53,14 @@ export async function POST(req: Request) {
     const { messages, fileContent } = await req.json();
 
     if (!OPENROUTER_API_KEY) {
-      return NextResponse.json(
-        { error: 'OpenRouter API key is not configured' },
-        { status: 500 }
+      return new Response(
+        JSON.stringify({ error: 'OpenRouter API key is not configured' }),
+        { 
+          status: 500,
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        }
       );
     }
 
@@ -79,13 +84,17 @@ export async function POST(req: Request) {
         ]
       : messages;
 
+    console.log('Making request to OpenRouter API...');
+    console.log('API URL:', OPENROUTER_API_URL);
+    console.log('Referer:', process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+
     const response = await fetch(OPENROUTER_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'HTTP-Referer': process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000',
-        'X-Title': 'DeepSeek Chat App',
+        'X-Title': 'BK Zen Vibe Chat',
       },
       body: JSON.stringify({
         model: 'deepseek/deepseek-chat-v3-0324:free',
@@ -97,11 +106,33 @@ export async function POST(req: Request) {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      return NextResponse.json(
-        { error: error.message || 'Failed to fetch response' },
-        { status: response.status }
-      );
+      const errorText = await response.text();
+      console.error('OpenRouter API Error:', errorText);
+      
+      try {
+        const error = JSON.parse(errorText);
+        return new Response(
+          `data: ${JSON.stringify({ content: `Error: ${error.error || error.message || 'Unknown error occurred'}` })}\n\ndata: [DONE]\n\n`,
+          {
+            headers: {
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+              'Connection': 'keep-alive',
+            },
+          }
+        );
+      } catch {
+        return new Response(
+          `data: ${JSON.stringify({ content: `Error: ${errorText || 'Unknown error occurred'}` })}\n\ndata: [DONE]\n\n`,
+          {
+            headers: {
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+              'Connection': 'keep-alive',
+            },
+          }
+        );
+      }
     }
 
     // Create a TransformStream to process the response
@@ -237,9 +268,14 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error('Chat API Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+    return new Response(
+      JSON.stringify({ error: 'Internal server error' }),
+      { 
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      }
     );
   }
-} 
+}
