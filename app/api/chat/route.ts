@@ -84,7 +84,7 @@ export async function POST(req: Request) {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'HTTP-Referer': 'http://localhost:3000',
+        'HTTP-Referer': process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000',
         'X-Title': 'DeepSeek Chat App',
       },
       body: JSON.stringify({
@@ -105,171 +105,127 @@ export async function POST(req: Request) {
     }
 
     // Create a TransformStream to process the response
+    let partialData = '';
+    
     const stream = new TransformStream({
       async transform(chunk, controller) {
         const text = new TextDecoder().decode(chunk);
         
-        // More robust line splitting that can handle different types of newlines
-        const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+        // Combine with any leftover partial data
+        const fullText = partialData + text;
+        partialData = '';
         
-        // Keep track of any accumulated content that might be split across chunks
-        let accumulatedBuffer = '';
+        // Split into lines and process each one
+        const lines = fullText.split(/\n/);
         
-        for (const line of lines) {
-          // Process each line
+        // Process all lines except the last one (which might be incomplete)
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          
+          // If this is the last line and doesn't end with a newline, save it for later
+          if (i === lines.length - 1 && !text.endsWith('\n')) {
+            partialData = line;
+            continue;
+          }
+          
           if (line.startsWith('data: ')) {
             const data = line.slice(6);
             if (data === '[DONE]') {
               controller.enqueue('data: [DONE]\n\n');
               continue;
             }
-
+            
+            // Handle the data
             try {
-              // Attempt to parse the JSON data
               const parsed = JSON.parse(data);
-              
-              // Handle both OpenAI-style and OpenRouter-style streaming responses
               const content = parsed.choices?.[0]?.delta?.content || 
                             parsed.choices?.[0]?.message?.content || 
                             '';
               
               if (content) {
-                controller.enqueue(`data: ${JSON.stringify({ content })}\n\n`);
+                // Process content to handle special characters and code blocks
+                const processedContent = content
+                  .replace(/\\n/g, '\n')
+                  .replace(/\\`/g, '`')
+                  .replace(/\\\\/g, '\\')
+                  .replace(/\\"/g, '"');
+                
+                controller.enqueue(`data: ${JSON.stringify({ content: processedContent })}\n\n`);
               }
             } catch (e) {
-              console.error('Error parsing chunk:', e);
-              
-              // =========================
-              // Enhanced Error Recovery
-              // =========================
-              
+              // If we get a JSON parse error, try to recover the content
               try {
-                // 1. Get diagnostic info
-                const errorMessage = (e as Error).message;
-                const positionMatch = /position (\d+)/.exec(errorMessage);
-                const errorPosition = positionMatch ? parseInt(positionMatch[1]) : -1;
+                // First, try to fix common JSON issues
+                let fixedData = data;
                 
-                // 2. Specific handling for code blocks which often cause issues
-                const hasCodeBlock = 
-                  data.includes('```') || 
-                  data.includes('\\n```') || 
-                  data.includes('code fence');
+                // 1. Fix unclosed quotes at the end
+                if (fixedData.match(/"[^"]*$/)) {
+                  fixedData += '"';
+                }
                 
-                // 3. Apply appropriate recovery strategy
-                let content = '';
-                let recoverySuccessful = false;
+                // 2. Fix unclosed braces
+                const openBraces = (fixedData.match(/{/g) || []).length;
+                const closeBraces = (fixedData.match(/}/g) || []).length;
+                if (openBraces > closeBraces) {
+                  fixedData += '}'.repeat(openBraces - closeBraces);
+                }
                 
-                // Strategy 1: Handle special cases with code blocks
-                if (hasCodeBlock) {
-                  // Look for content field directly, which often works for code blocks
-                  const codeMatch = /"content":"(.*?)(?:",|"})/.exec(data);
-                  if (codeMatch && codeMatch[1]) {
-                    content = codeMatch[1]
-                      .replace(/\\"/g, '"')  // Fix escaped quotes in code
-                      .replace(/\\\\/g, '\\'); // Fix double escaped backslashes
+                try {
+                  // Try parsing the fixed data
+                  const parsed = JSON.parse(fixedData);
+                  const content = parsed.choices?.[0]?.delta?.content || 
+                                parsed.choices?.[0]?.message?.content || 
+                                '';
+                  
+                  if (content) {
+                    controller.enqueue(`data: ${JSON.stringify({ content })}\n\n`);
+                  }
+                } catch {
+                  // If fixing didn't work, try regex extraction
+                  const contentMatch = /"content":"((?:[^"\\]|\\.)*)"/.exec(data);
+                  if (contentMatch && contentMatch[1]) {
+                    const content = contentMatch[1]
+                      .replace(/\\n/g, '\n')
+                      .replace(/\\`/g, '`')
+                      .replace(/\\\\/g, '\\')
+                      .replace(/\\"/g, '"');
                     
                     controller.enqueue(`data: ${JSON.stringify({ content })}\n\n`);
-                    recoverySuccessful = true;
-                  }
-                }
-                
-                // Strategy 2: Truncate at the error position and get partial content
-                if (!recoverySuccessful && errorPosition > 0) {
-                  try {
-                    // If error is at a specific position, we can try to extract content
-                    // by truncating at that position to get valid JSON
-                    const truncated = data.substring(0, errorPosition);
-                    const lastValidQuotePos = truncated.lastIndexOf('"');
-                    
-                    if (lastValidQuotePos > 0) {
-                      const partialJson = truncated.substring(0, lastValidQuotePos) + '"}';
-                      try {
-                        const partialParsed = JSON.parse(partialJson);
-                        const partialContent = partialParsed.choices?.[0]?.delta?.content || '';
-                        
-                        if (partialContent) {
-                          controller.enqueue(`data: ${JSON.stringify({ content: partialContent })}\n\n`);
-                          recoverySuccessful = true;
-                        }
-                      } catch {
-                        // Failed to parse partial JSON, continue to next strategy
-                      }
-                    }
-                  } catch {
-                    // Failed truncation strategy, continue to next strategy
-                  }
-                }
-                
-                // Strategy 3: Fall back to the original sanitization methods
-                if (!recoverySuccessful) {
-                  // Fix unterminated strings by adding closing quotes and braces
-                  let sanitizedData = data;
-                  
-                  // Balance quotes
-                  let quoteCount = 0;
-                  let inEscapeSequence = false;
-                  for (let i = 0; i < sanitizedData.length; i++) {
-                    if (sanitizedData[i] === '\\' && !inEscapeSequence) {
-                      inEscapeSequence = true;
-                    } else {
-                      if (sanitizedData[i] === '"' && !inEscapeSequence) {
-                        quoteCount++;
-                      }
-                      inEscapeSequence = false;
-                    }
-                  }
-                  
-                  if (quoteCount % 2 !== 0) {
-                    sanitizedData += '"';
-                  }
-                  
-                  // Balance braces
-                  let openBraces = 0, closeBraces = 0;
-                  for (let i = 0; i < sanitizedData.length; i++) {
-                    if (sanitizedData[i] === '{') openBraces++;
-                    if (sanitizedData[i] === '}') closeBraces++;
-                  }
-                  
-                  while (openBraces > closeBraces) {
-                    sanitizedData += '}';
-                    closeBraces++;
-                  }
-                  
-                  try {
-                    const sanitizedParsed = JSON.parse(sanitizedData);
-                    const sanitizedContent = sanitizedParsed.choices?.[0]?.delta?.content || 
-                                          sanitizedParsed.choices?.[0]?.message?.content || 
-                                          '';
-                    
-                    if (sanitizedContent) {
-                      controller.enqueue(`data: ${JSON.stringify({ content: sanitizedContent })}\n\n`);
-                      recoverySuccessful = true;
-                    }
-                  } catch {
-                    // Sanitizing still didn't work
-                  }
-                }
-                
-                // Strategy 4: Direct regex extraction as a last resort
-                if (!recoverySuccessful) {
-                  const contentMatch = /"(?:content|text)":"([^"]*)/.exec(data);
-                  if (contentMatch && contentMatch[1]) {
-                    controller.enqueue(`data: ${JSON.stringify({ content: contentMatch[1] })}\n\n`);
                   } else {
-                    // We've tried everything, but can't extract meaningful content
-                    // Let's just pass a space character to keep the stream alive
-                    controller.enqueue(`data: ${JSON.stringify({ content: ' ' })}\n\n`);
+                    // Last resort: try to extract any text between content markers
+                    const lastResortMatch = /content"?\s*:\s*"([^"]*)"/.exec(data);
+                    if (lastResortMatch && lastResortMatch[1]) {
+                      controller.enqueue(`data: ${JSON.stringify({ content: lastResortMatch[1] })}\n\n`);
+                    }
                   }
                 }
-              } catch (finalRecoveryError) {
-                console.error('All recovery strategies failed:', finalRecoveryError);
-                // Send a space to keep the stream alive even in total failure
+              } catch (recoveryError) {
+                console.error('Recovery failed:', recoveryError);
+                // Keep the stream alive with a space character
                 controller.enqueue(`data: ${JSON.stringify({ content: ' ' })}\n\n`);
               }
             }
           }
         }
       },
+      flush(controller) {
+        // Process any remaining partial data when the stream ends
+        if (partialData) {
+          try {
+            const parsed = JSON.parse(partialData);
+            const content = parsed.choices?.[0]?.delta?.content || 
+                          parsed.choices?.[0]?.message?.content || 
+                          '';
+            
+            if (content) {
+              controller.enqueue(`data: ${JSON.stringify({ content })}\n\n`);
+            }
+          } catch {
+            // Ignore parsing errors in the final flush
+          }
+        }
+      }
     });
 
     return new Response(response.body?.pipeThrough(stream), {

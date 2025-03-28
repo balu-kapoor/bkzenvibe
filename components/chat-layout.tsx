@@ -124,7 +124,7 @@ export function ChatLayout() {
 
           {/* Chat Area */}
           <div className='flex-1 overflow-hidden'>
-            <div className='max-w-3xl mx-auto h-full'>
+            <div className='mx-auto h-full'>
               <Chat />
             </div>
           </div>
