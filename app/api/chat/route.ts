@@ -8,14 +8,23 @@ const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // Function to check if the message is asking about the model
 function isAskingAboutModel(message: string): boolean {
+  const normalizedMessage = message.toLowerCase();
+  
   const modelKeywords = [
     'which model', 'what model', 'which llm', 'what llm', 'which ai', 'what ai model',
     'which language model', 'what language model', 'deepseek', 'model are you', 'which version',
     'what version', 'model version', 'which ai are you', 'what are you running on',
-    'powered by', 'running on'
+    'powered by', 'running on', 'artificial model', 'artificial intelligence model',
+    'ai model', 'language model', 'foundation model', 'underlying model', 'based on',
+    'built on', 'trained on', 'architecture', 'neural network', 'transformer',
+    'gpt', 'llama', 'claude', 'mistral', 'gemini', 'anthropic', 'openai',
+    'what kind of ai', 'what type of ai', 'what sort of ai', 'which kind of ai',
+    'which type of ai', 'which sort of ai', 'what are you', 'who are you',
+    'tell me about yourself', 'your model', 'your architecture', 'your training',
+    'your parameters', 'your capabilities', 'how were you made', 'how were you created',
+    'how were you trained', 'how were you built', 'how do you work'
   ];
   
-  const normalizedMessage = message.toLowerCase();
   return modelKeywords.some(keyword => normalizedMessage.includes(keyword));
 }
 
@@ -279,7 +288,7 @@ export async function POST(req: Request) {
     // Check if the last user message is asking about the model
     const lastUserMessage = messages.findLast((msg: any) => msg.role === 'user');
     if (lastUserMessage && isAskingAboutModel(lastUserMessage.content)) {
-      const customResponse = "I'm running on BK Zen Vibe's proprietary AI model, which combines advanced neural networks with specialized knowledge processing. This custom model was developed to provide high-quality responses with a focus on helpful, accurate information.";
+      const customResponse = "I'm BK Zen Vibe, a custom AI assistant designed to provide helpful, accurate information. I'm built on proprietary technology developed specifically for conversational AI applications. My capabilities include understanding context, processing natural language, and generating human-like responses. I'm continuously being improved to better assist users with their questions and tasks.";
       return createCustomStreamingResponse(customResponse);
     }
 
