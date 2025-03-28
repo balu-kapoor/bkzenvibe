@@ -289,7 +289,11 @@ export async function POST(req: Request) {
           ...messages,
           {
             role: "system",
-            content: `The user has shared a file with the following content:\n\n${fileContent}\n\nPlease analyze and respond to their message in the context of this file content.`
+            content: `The user has shared one or more files with the following content. Please analyze and respond to their message in the context of these files:
+
+${fileContent}
+
+Important: If the files contain code, please analyze it thoroughly. If the user is asking about issues or improvements, provide specific suggestions referencing the relevant parts of the code.`
           }
         ]
       : messages;

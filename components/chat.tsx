@@ -3,8 +3,21 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { ScrollArea } from "./ui/scroll-area";
 import { MessageContent } from "./message-content";
-import { Loader2, Square, Send, User, Paperclip, FileText } from "lucide-react";
+import { 
+  Loader2, Square, Send, User, Paperclip, FileText, 
+  File, X, Image as ImageIcon, FileCode, File as FilePdf 
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { 
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "./ui/dialog";
+import { Progress } from "./ui/progress";
+import { Badge } from "./ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 // Custom AI Bot Icon component
 const AIBotIcon = () => {
@@ -37,10 +50,12 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   attachments?: {
-    type: "image" | "pdf" | "document";
+    type: "image" | "pdf" | "code" | "document";
     url: string;
     name: string;
+    size?: number;
     content?: string;
+    mimeType?: string;
   }[];
 }
 
@@ -49,6 +64,10 @@ export function Chat() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const [previewFile, setPreviewFile] = useState<{url: string, type: string, name: string} | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -59,7 +78,52 @@ export function Chat() {
     }
   }, [messages, streamingContent]);
 
-  const readFileContent = (file: File): Promise<string> => {
+  // Clean up object URLs when component unmounts
+  useEffect(() => {
+    return () => {
+      messages.forEach(message => {
+        message.attachments?.forEach(attachment => {
+          URL.revokeObjectURL(attachment.url);
+        });
+      });
+    };
+  }, []);
+
+  const getFileIcon = (type: string, mimeType?: string) => {
+    if (type === "image") return <ImageIcon className="h-4 w-4 text-blue-500" />;
+    if (type === "pdf") return <FilePdf className="h-4 w-4 text-red-500" />;
+    if (type === "code" || mimeType?.includes("application/json") || mimeType?.includes("text/html")) 
+      return <FileCode className="h-4 w-4 text-green-500" />;
+    return <FileText className="h-4 w-4 text-gray-500" />;
+  };
+
+  const getFileType = (file: File): "image" | "pdf" | "code" | "document" => {
+    if (file.type.startsWith("image/")) return "image";
+    if (file.type === "application/pdf") return "pdf";
+    if (
+      file.type.includes("javascript") || 
+      file.type.includes("typescript") || 
+      file.type.includes("json") || 
+      file.type.includes("html") || 
+      file.type.includes("css") ||
+      file.name.endsWith(".js") ||
+      file.name.endsWith(".ts") ||
+      file.name.endsWith(".jsx") ||
+      file.name.endsWith(".tsx") ||
+      file.name.endsWith(".json") ||
+      file.name.endsWith(".html") ||
+      file.name.endsWith(".css")
+    ) return "code";
+    return "document";
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  };
+
+  const readFileContent = async (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       if (file.type.startsWith("image/")) {
         resolve(""); // Skip reading image content
@@ -68,69 +132,134 @@ export function Chat() {
 
       const reader = new FileReader();
       reader.onload = (e) => {
-        resolve(e.target?.result as string);
+        // For binary files like PDFs, we'll just mention it's a binary file
+        if (file.type === "application/pdf") {
+          resolve(`[This is a PDF file: ${file.name}]`);
+          return;
+        }
+        
+        // For text files, limit the content size to prevent overwhelming the LLM
+        const content = e.target?.result as string;
+        const maxLength = 5000; // Limit to 5000 characters
+        
+        if (content && content.length > maxLength) {
+          resolve(content.substring(0, maxLength) + `\n\n[Content truncated due to size. Total size: ${content.length} characters]`);
+        } else {
+          resolve(content || "");
+        }
       };
       reader.onerror = (e) => {
         reject(e);
       };
 
+      // Use readAsText for text files, readAsDataURL for binary files
       if (file.type === "application/pdf") {
-        // For PDFs, we might want to use a PDF.js or similar library
-        // For now, we'll just read it as text
+        reader.readAsDataURL(file);
+      } else if (
+        file.type.includes("text") || 
+        file.type.includes("javascript") || 
+        file.type.includes("json") || 
+        file.type.includes("html") || 
+        file.type.includes("css") ||
+        file.name.endsWith(".js") ||
+        file.name.endsWith(".ts") ||
+        file.name.endsWith(".jsx") ||
+        file.name.endsWith(".tsx") ||
+        file.name.endsWith(".json") ||
+        file.name.endsWith(".html") ||
+        file.name.endsWith(".css") ||
+        file.name.endsWith(".txt") ||
+        file.name.endsWith(".md")
+      ) {
         reader.readAsText(file);
       } else {
+        // For unknown file types, just read as text and hope for the best
         reader.readAsText(file);
       }
     });
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const newFiles = Array.from(e.target.files);
+      setAttachedFiles(prev => [...prev, ...newFiles]);
+    }
+  };
+
+  const removeFile = (index: number) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const openFilePreview = (url: string, type: string, name: string) => {
+    setPreviewFile({ url, type, name });
+  };
+
+  const closeFilePreview = () => {
+    setPreviewFile(null);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!input.trim() && !fileInputRef.current?.files?.length) || isLoading)
-      return;
+    if ((!input.trim() && attachedFiles.length === 0) || isLoading) return;
 
     const attachments: Message["attachments"] = [];
     let fileContent = "";
     let timeoutId: NodeJS.Timeout | undefined;
-
-    if (fileInputRef.current?.files?.length) {
-      for (const file of Array.from(fileInputRef.current.files)) {
+    
+    if (attachedFiles.length > 0) {
+      setIsUploading(true);
+      let processedFiles = 0;
+      
+      for (const file of attachedFiles) {
         try {
+          setUploadProgress(Math.floor((processedFiles / attachedFiles.length) * 100));
+          
           const content = await readFileContent(file);
-          fileContent += content ? `\n\nFile: ${file.name}\n${content}` : "";
+          // Format file content with clear separation and metadata
+          fileContent += content ? 
+            `\n\n--- FILE: ${file.name} (${formatFileSize(file.size)}) ---\n${content}\n--- END OF FILE ---\n\n` : 
+            "";
 
-          const type = file.type.startsWith("image/")
-            ? "image"
-            : file.type === "application/pdf"
-            ? "pdf"
-            : "document";
+          const fileType = getFileType(file);
+          const objectUrl = URL.createObjectURL(file);
 
           attachments.push({
-            type,
-            url: URL.createObjectURL(file),
+            type: fileType,
+            url: objectUrl,
             name: file.name,
+            size: file.size,
             content: content || undefined,
+            mimeType: file.type,
           });
+          
+          processedFiles++;
+          setUploadProgress(Math.floor((processedFiles / attachedFiles.length) * 100));
         } catch (error) {
           console.error("Error reading file:", error);
         }
       }
+      
+      setIsUploading(false);
+      setUploadProgress(0);
     }
 
     const userMessage: Message = {
       role: "user",
       content: input,
-      attachments,
+      attachments: attachments.length > 0 ? attachments : undefined,
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    setAttachedFiles([]);
     setIsLoading(true);
     setStreamingContent("");
     if (fileInputRef.current) fileInputRef.current.value = "";
     abortControllerRef.current = new AbortController();
 
     try {
+      console.log("Sending file content:", fileContent); // Debug log
+      
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -270,26 +399,45 @@ export function Chat() {
                   <AIBotIcon />
                 </div>
               )}
-              <div className='flex flex-col gap-2'>
-                {message.attachments?.map((attachment, i) => (
-                  <div
-                    key={i}
-                    className='rounded-lg overflow-hidden border bg-muted/30 p-2'
-                  >
-                    {attachment.type === "image" ? (
-                      <img
-                        src={attachment.url}
-                        alt={attachment.name}
-                        className='max-w-sm rounded'
-                      />
-                    ) : (
-                      <div className='flex items-center gap-2'>
-                        <FileText className='h-4 w-4' />
-                        <span className='text-sm'>{attachment.name}</span>
+              <div className='flex flex-col gap-2 max-w-[85%]'>
+                {message.attachments && message.attachments.length > 0 && (
+                  <div className='flex flex-wrap gap-2'>
+                    {message.attachments.map((attachment, i) => (
+                      <div
+                        key={i}
+                        className='rounded-lg overflow-hidden border bg-muted/30 p-2 flex flex-col gap-1'
+                      >
+                        {attachment.type === "image" ? (
+                          <div className="cursor-pointer" onClick={() => openFilePreview(attachment.url, attachment.type, attachment.name)}>
+                            <img
+                              src={attachment.url}
+                              alt={attachment.name}
+                              className='max-w-sm max-h-48 rounded object-cover'
+                            />
+                            <div className='flex items-center justify-between mt-1'>
+                              <span className='text-xs truncate max-w-[150px]'>{attachment.name}</span>
+                              {attachment.size && (
+                                <Badge variant="outline" className="text-xs">
+                                  {formatFileSize(attachment.size)}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className='flex items-center gap-2 cursor-pointer' onClick={() => openFilePreview(attachment.url, attachment.type, attachment.name)}>
+                            {getFileIcon(attachment.type, attachment.mimeType)}
+                            <div className='flex flex-col'>
+                              <span className='text-sm font-medium truncate max-w-[150px]'>{attachment.name}</span>
+                              {attachment.size && (
+                                <span className='text-xs text-muted-foreground'>{formatFileSize(attachment.size)}</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    ))}
                   </div>
-                ))}
+                )}
                 <div
                   className={cn(
                     "rounded-2xl px-4 py-3 shadow-sm",
@@ -333,6 +481,35 @@ export function Chat() {
         </div>
       </ScrollArea>
       <div className='border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60'>
+        {isUploading && (
+          <div className="px-4 py-2">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm">Uploading files...</span>
+              <span className="text-sm">{uploadProgress}%</span>
+            </div>
+            <Progress value={uploadProgress} className="h-1" />
+          </div>
+        )}
+        
+        {attachedFiles.length > 0 && (
+          <div className="px-4 py-2 flex flex-wrap gap-2 border-b">
+            {attachedFiles.map((file, index) => (
+              <div key={index} className="flex items-center gap-1 bg-muted/50 rounded-full pl-2 pr-1 py-1">
+                {getFileIcon(getFileType(file), file.type)}
+                <span className="text-xs truncate max-w-[100px]">{file.name}</span>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-5 w-5" 
+                  onClick={() => removeFile(index)}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+        
         <form
           onSubmit={handleSubmit}
           className='max-w-3xl mx-auto p-4 flex gap-2'
@@ -342,40 +519,102 @@ export function Chat() {
             ref={fileInputRef}
             className='hidden'
             multiple
-            accept='image/*,.pdf,.doc,.docx,.txt'
+            accept='image/*,.pdf,.doc,.docx,.txt,.json,.js,.ts,.jsx,.tsx,.html,.css,.md'
+            onChange={handleFileChange}
           />
-          <Button
-            type='button'
-            variant='ghost'
-            size='icon'
-            className='flex-none'
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Paperclip className='h-4 w-4' />
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='icon'
+                  className='flex-none'
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isLoading}
+                >
+                  <Paperclip className='h-4 w-4' />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Attach files</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder='Type your message...'
+            placeholder='Ask anything...'
             disabled={isLoading}
             className='flex-1'
           />
           {isLoading ? (
-            <Button
-              type='button'
-              variant='destructive'
-              size='icon'
-              onClick={handleStop}
-            >
-              <Square className='h-4 w-4' />
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type='button'
+                    variant='destructive'
+                    size='icon'
+                    onClick={handleStop}
+                  >
+                    <Square className='h-4 w-4' />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Stop generating</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           ) : (
-            <Button type='submit' size='icon'>
-              <Send className='h-4 w-4' />
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button type='submit' size='icon'>
+                    <Send className='h-4 w-4' />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Send message</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </form>
       </div>
+      
+      {/* File Preview Dialog */}
+      <Dialog open={!!previewFile} onOpenChange={(open: boolean) => !open && closeFilePreview()}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {previewFile && getFileIcon(previewFile.type)}
+              <span className="truncate">{previewFile?.name}</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="mt-4">
+            {previewFile?.type === "image" ? (
+              <img 
+                src={previewFile.url} 
+                alt={previewFile.name} 
+                className="max-w-full max-h-[60vh] object-contain mx-auto"
+              />
+            ) : previewFile?.type === "pdf" ? (
+              <iframe 
+                src={previewFile.url} 
+                title={previewFile.name}
+                className="w-full h-[60vh]"
+              />
+            ) : (
+              <div className="bg-muted p-4 rounded-md overflow-auto max-h-[60vh]">
+                <pre className="whitespace-pre-wrap break-words text-sm">
+                  <code>Loading content...</code>
+                </pre>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
