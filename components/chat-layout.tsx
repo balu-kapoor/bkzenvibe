@@ -71,58 +71,25 @@ export function ChatLayout() {
               </Button>
             ))}
           </div>
-          <div className='space-y-2'>
-            <Button
-              variant='outline'
-              className='w-full justify-start hover:bg-muted/50'
-              onClick={() => document.getElementById("pdf-upload")?.click()}
-            >
-              <FileText className='h-4 w-4 mr-2' />
-              Upload PDF
-              <input
-                id='pdf-upload'
-                type='file'
-                accept='.pdf'
-                className='hidden'
-                onChange={(e) => {
-                  // Handle PDF upload
-                }}
-              />
-            </Button>
-            <Button
-              variant='outline'
-              className='w-full justify-start hover:bg-muted/50'
-              onClick={() => document.getElementById("doc-upload")?.click()}
-            >
-              <FileText className='h-4 w-4 mr-2' />
-              Upload Document
-              <input
-                id='doc-upload'
-                type='file'
-                accept='.doc,.docx'
-                className='hidden'
-                onChange={(e) => {
-                  // Handle document upload
-                }}
-              />
-            </Button>
-            <Button
-              variant='outline'
-              className='w-full justify-start hover:bg-muted/50'
-              onClick={() => document.getElementById("image-upload")?.click()}
-            >
-              <Image className='h-4 w-4 mr-2' />
-              Upload Image
-              <input
-                id='image-upload'
-                type='file'
-                accept='image/*'
-                className='hidden'
-                onChange={(e) => {
-                  // Handle image upload
-                }}
-              />
-            </Button>
+          <div className='space-y-4 mt-auto'>
+            <div className='bg-gradient-to-r from-blue-100 to-purple-100 dark:from-blue-950 dark:to-purple-950 p-4 rounded-lg border border-gray-200 dark:border-gray-800'>
+              <h3 className='text-sm font-bold mb-2 bg-gradient-to-r from-blue-600 to-purple-600 text-transparent bg-clip-text'>
+                Model Status
+              </h3>
+              <div className='flex items-center gap-2'>
+                <div className='relative w-2 h-2'>
+                  <div className='absolute w-full h-full rounded-full bg-green-500 animate-ping opacity-75'></div>
+                  <div className='relative w-full h-full rounded-full bg-green-500'></div>
+                </div>
+                <p className='text-xs text-gray-600 dark:text-gray-400'>
+                  BK Zen Vibe Model{" "}
+                  <span className='text-green-500 font-medium'>• Active</span>
+                </p>
+              </div>
+              <p className='text-xs text-gray-500 mt-2 italic'>
+                Enhanced features in development
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -157,7 +124,9 @@ export function ChatLayout() {
 
           {/* Chat Area */}
           <div className='flex-1 overflow-hidden'>
-            <Chat />
+            <div className='max-w-3xl mx-auto h-full'>
+              <Chat />
+            </div>
           </div>
         </div>
       </div>

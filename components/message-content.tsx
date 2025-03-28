@@ -31,30 +31,29 @@ export function MessageContent({ content }: MessageContentProps) {
 
           if (!inline && match) {
             return (
-              <div className='relative group'>
-                <div className='absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity'>
-                  <button
-                    onClick={() => handleCopy(code)}
-                    className='flex items-center gap-1 px-2 py-1 rounded text-xs bg-primary/10 hover:bg-primary/20 text-primary transition-colors'
-                  >
-                    {copiedCode === code ? (
-                      <>
-                        <Check className='h-3 w-3' />
-                        <span>Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className='h-3 w-3' />
-                        <span>Copy</span>
-                      </>
-                    )}
-                  </button>
-                </div>
+              <div className='relative code-block'>
+                <button
+                  onClick={() => handleCopy(code)}
+                  className='copy-button'
+                  aria-label='Copy code to clipboard'
+                >
+                  {copiedCode === code ? (
+                    <>
+                      <Check className='h-3.5 w-3.5 flex-shrink-0' />
+                      <span>Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className='h-3.5 w-3.5 flex-shrink-0' />
+                      <span>Copy</span>
+                    </>
+                  )}
+                </button>
                 <SyntaxHighlighter
                   style={vscDarkPlus}
                   language={match[1]}
                   PreTag='div'
-                  className='!bg-transparent !p-4 rounded-lg border border-border'
+                  className='!bg-gray-900 !p-4 rounded-lg'
                   codeTagProps={{ style: { backgroundColor: "transparent" } }}
                   {...props}
                 >

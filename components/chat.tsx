@@ -3,16 +3,35 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { ScrollArea } from "./ui/scroll-area";
 import { MessageContent } from "./message-content";
-import {
-  Loader2,
-  Square,
-  Send,
-  Bot,
-  User,
-  Paperclip,
-  FileText,
-} from "lucide-react";
+import { Loader2, Square, Send, User, Paperclip, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// Custom AI Bot Icon component
+const AIBotIcon = () => {
+  return (
+    <div className='w-full h-full bg-blue-500 rounded-full flex items-center justify-center'>
+      <svg
+        viewBox='0 0 24 24'
+        className='w-4 h-4 text-white'
+        fill='none'
+        stroke='currentColor'
+        strokeWidth='2'
+        strokeLinecap='round'
+        strokeLinejoin='round'
+      >
+        <circle cx='12' cy='12' r='5' />
+        <path d='M12 2v4' />
+        <path d='M12 18v4' />
+        <path d='M4.93 4.93l2.83 2.83' />
+        <path d='M16.24 16.24l2.83 2.83' />
+        <path d='M2 12h4' />
+        <path d='M18 12h4' />
+        <path d='M4.93 19.07l2.83-2.83' />
+        <path d='M16.24 7.76l2.83-2.83' />
+      </svg>
+    </div>
+  );
+};
 
 interface Message {
   role: "user" | "assistant";
@@ -72,6 +91,7 @@ export function Chat() {
 
     const attachments: Message["attachments"] = [];
     let fileContent = "";
+    let timeoutId: NodeJS.Timeout | undefined;
 
     if (fileInputRef.current?.files?.length) {
       for (const file of Array.from(fileInputRef.current.files)) {
@@ -122,11 +142,30 @@ export function Chat() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to fetch response");
+        throw new Error(
+          `Failed to fetch response: ${response.status} ${response.statusText}`
+        );
       }
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error("No reader available");
+
+      // Add timeout to prevent infinite loading
+      timeoutId = setTimeout(() => {
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content:
+                "Request timed out. The response took too long to complete.",
+            },
+          ]);
+          setIsLoading(false);
+          setStreamingContent("");
+        }
+      }, 60000); // 60 seconds timeout
 
       let accumulatedContent = "";
       while (true) {
@@ -155,6 +194,23 @@ export function Chat() {
               }
             } catch (e) {
               console.error("Error parsing chunk:", e);
+              // Continue processing without crashing
+              // Try to recover partial content if possible
+              if (typeof data === "string" && data.includes('"content":')) {
+                try {
+                  // Try to extract content between quotes
+                  const contentMatch = /"content":"([^"]*)/.exec(data);
+                  if (contentMatch && contentMatch[1]) {
+                    accumulatedContent += contentMatch[1];
+                    setStreamingContent(accumulatedContent);
+                  }
+                } catch (extractError) {
+                  console.error(
+                    "Failed to extract partial content:",
+                    extractError
+                  );
+                }
+              }
             }
           }
         }
@@ -171,11 +227,17 @@ export function Chat() {
           ...prev,
           {
             role: "assistant",
-            content: "Sorry, there was an error processing your request.",
+            content: `Sorry, there was an error processing your request: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`,
           },
         ]);
       }
     } finally {
+      // Clear any timeout if it was set
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       setIsLoading(false);
       setStreamingContent("");
       abortControllerRef.current = null;
@@ -193,18 +255,19 @@ export function Chat() {
   return (
     <div className='flex flex-col h-full'>
       <ScrollArea ref={scrollRef} className='flex-1 px-4'>
-        <div className='max-w-3xl mx-auto py-6 space-y-6'>
+        <div className='py-6 space-y-6'>
           {messages.map((message, index) => (
             <div
               key={index}
               className={cn(
-                "flex items-start gap-3",
-                message.role === "user" ? "justify-end" : "justify-start"
+                "flex items-start gap-4 max-w-full",
+                message.role === "assistant" && "justify-start",
+                message.role === "user" && "justify-end"
               )}
             >
               {message.role === "assistant" && (
-                <div className='w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center'>
-                  <Bot className='h-4 w-4 text-primary' />
+                <div className='w-8 h-8 rounded-full flex items-center justify-center overflow-hidden'>
+                  <AIBotIcon />
                 </div>
               )}
               <div className='flex flex-col gap-2'>
@@ -246,9 +309,9 @@ export function Chat() {
             </div>
           ))}
           {streamingContent && (
-            <div className='flex items-start gap-3'>
-              <div className='w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center'>
-                <Bot className='h-4 w-4 text-primary' />
+            <div className='flex items-start gap-4 max-w-full'>
+              <div className='w-8 h-8 rounded-full flex items-center justify-center overflow-hidden'>
+                <AIBotIcon />
               </div>
               <div className='bg-muted rounded-2xl px-4 py-3'>
                 <MessageContent content={streamingContent} />
@@ -257,9 +320,9 @@ export function Chat() {
             </div>
           )}
           {isLoading && !streamingContent && (
-            <div className='flex items-start gap-3'>
-              <div className='w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center'>
-                <Bot className='h-4 w-4 text-primary' />
+            <div className='flex items-start gap-4 max-w-full'>
+              <div className='w-8 h-8 rounded-full flex items-center justify-center overflow-hidden'>
+                <AIBotIcon />
               </div>
               <div className='bg-muted rounded-2xl px-4 py-3 flex items-center gap-2'>
                 <Loader2 className='h-4 w-4 animate-spin text-primary' />

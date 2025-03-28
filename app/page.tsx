@@ -1,7 +1,6 @@
 "use client";
 
 import { ChatLayout } from "@/components/chat-layout";
-import { GradientTitle } from "@/components/gradient-title";
 
 export default function Home() {
   return (
