@@ -1,10 +1,11 @@
 import { useState } from "react";
-import ReactMarkdown, { Components } from "react-markdown";
+import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { cn } from "@/lib/utils";
 import { Check, Copy } from "lucide-react";
+import type { Components } from "react-markdown";
 
 interface MessageContentProps {
   content: string;
@@ -24,16 +25,16 @@ export function MessageContent({ content }: MessageContentProps) {
       remarkPlugins={[remarkGfm]}
       className='prose prose-sm dark:prose-invert max-w-none'
       components={{
-        code: ({ inline, className, children, ...props }: Components['code']) => {
+        code({ inline, className, children, ...props }: Components["code"]) {
           const match = /language-(\w+)/.exec(className || "");
           const code = String(children).replace(/\n$/, "");
 
           if (!inline && match) {
             return (
-              <div className='relative code-block group'>
+              <div className='relative code-block'>
                 <button
                   onClick={() => handleCopy(code)}
-                  className='absolute right-2 top-2 p-2 rounded bg-gray-800/50 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2'
+                  className='copy-button'
                   aria-label='Copy code to clipboard'
                 >
                   {copiedCode === code ? (
@@ -52,20 +53,8 @@ export function MessageContent({ content }: MessageContentProps) {
                   style={vscDarkPlus}
                   language={match[1]}
                   PreTag='div'
-                  className='!mt-0 !bg-gray-900 !p-4 rounded-lg'
-                  showLineNumbers={true}
-                  wrapLines={true}
-                  customStyle={{
-                    margin: 0,
-                    background: 'rgb(17, 24, 39)',
-                    fontSize: '0.875rem',
-                  }}
-                  codeTagProps={{
-                    style: {
-                      backgroundColor: "transparent",
-                      fontSize: 'inherit',
-                    }
-                  }}
+                  className='!bg-gray-900 !p-4 rounded-lg'
+                  codeTagProps={{ style: { backgroundColor: "transparent" } }}
                   {...props}
                 >
                   {code}
@@ -110,10 +99,29 @@ export function MessageContent({ content }: MessageContentProps) {
         },
         blockquote({ children }) {
           return (
-            <blockquote className='border-l-2 border-primary pl-4 italic'>
+            <blockquote className='border-l-4 border-primary/20 pl-4 italic my-4'>
               {children}
             </blockquote>
           );
+        },
+        table({ children }) {
+          return (
+            <div className='overflow-x-auto my-4'>
+              <table className='min-w-full divide-y divide-border'>
+                {children}
+              </table>
+            </div>
+          );
+        },
+        th({ children }) {
+          return (
+            <th className='px-4 py-2 text-left font-semibold bg-muted/50'>
+              {children}
+            </th>
+          );
+        },
+        td({ children }) {
+          return <td className='px-4 py-2 border-t'>{children}</td>;
         },
       }}
     >
