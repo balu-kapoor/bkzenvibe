@@ -5,7 +5,7 @@ import { ScrollArea } from "./ui/scroll-area";
 import { MessageContent } from "./message-content";
 import { 
   Loader2, Square, Send, User, Paperclip, FileText, 
-  File as FilePdf 
+  File as FilePdf, X 
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { 
@@ -683,7 +683,7 @@ The AI will respond based on your description and questions, not based on any au
                   className="h-5 w-5" 
                   onClick={() => removeFile(index)}
                 >
-                  <Square className="h-3 w-3" />
+                  <X className="h-3 w-3" />
                 </Button>
               </div>
             ))}
