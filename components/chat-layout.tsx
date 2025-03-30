@@ -166,102 +166,109 @@ export function ChatLayout() {
       {/* Sidebar */}
       <div
         className={cn(
-          "bg-background/50 border-r border-r-muted/20 flex flex-col backdrop-blur-xl transition-all duration-300 relative",
-          isSidebarOpen ? "w-64" : "w-0"
+          "bg-background/50 border-r border-r-muted/20 flex flex-col backdrop-blur-xl transition-all duration-300 relative overflow-hidden",
+          isSidebarOpen ? "w-64" : "w-0 border-r-0"
         )}
       >
-        {/* Top gradient overlay */}
-        <div className='absolute inset-0 bg-gradient-to-b from-purple-500/5 via-transparent to-purple-500/10 pointer-events-none' />
+        <div
+          className={cn(
+            "absolute inset-0 flex flex-col w-64 transition-transform duration-300",
+            isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          )}
+        >
+          {/* Top gradient overlay */}
+          <div className='absolute inset-0 bg-gradient-to-b from-purple-500/5 via-transparent to-purple-500/10 pointer-events-none' />
 
-        {/* Fixed top section */}
-        <div className='p-4 flex flex-col gap-4 relative z-10'>
-          <Button
-            onClick={createNewChat}
-            className='w-full flex items-center gap-2 bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 hover:from-purple-600 hover:via-blue-600 hover:to-purple-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] group relative overflow-hidden'
-          >
-            <div className='absolute inset-0 bg-gradient-to-r from-white/10 via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300' />
-            <PlusCircle className='w-4 h-4 relative z-10' />
-            <span className='relative z-10'>New Chat</span>
-          </Button>
+          {/* Fixed top section */}
+          <div className='p-4 flex flex-col gap-4 relative z-10'>
+            <Button
+              onClick={createNewChat}
+              className='w-full flex items-center gap-2 bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 hover:from-purple-600 hover:via-blue-600 hover:to-purple-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] group relative overflow-hidden'
+            >
+              <div className='absolute inset-0 bg-gradient-to-r from-white/10 via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300' />
+              <PlusCircle className='w-4 h-4 relative z-10' />
+              <span className='relative z-10'>New Chat</span>
+            </Button>
 
-          <Alert
-            variant='warning'
-            className='bg-orange-500/5 border-none shadow-sm backdrop-blur-sm rounded-xl relative overflow-hidden group'
-          >
-            <div className='absolute inset-0 bg-gradient-to-r from-orange-500/10 via-yellow-500/10 to-orange-500/10 opacity-50' />
-            <div className='absolute inset-0 bg-gradient-to-br from-orange-500/20 via-transparent to-transparent' />
-            <div className='flex gap-3 items-start relative z-10'>
-              <Info className='h-5 w-5 text-orange-400 mt-0.5 flex-shrink-0' />
-              <AlertDescription className='text-sm font-medium text-orange-500/90'>
-                Currently using local storage for chats. Messages are temporary
-                and stored only in your browser.
-              </AlertDescription>
-            </div>
-          </Alert>
-        </div>
+            <Alert
+              variant='warning'
+              className='bg-orange-500/5 border-none shadow-sm backdrop-blur-sm rounded-xl relative overflow-hidden group'
+            >
+              <div className='absolute inset-0 bg-gradient-to-r from-orange-500/10 via-yellow-500/10 to-orange-500/10 opacity-50' />
+              <div className='absolute inset-0 bg-gradient-to-br from-orange-500/20 via-transparent to-transparent' />
+              <div className='flex gap-3 items-start relative z-10'>
+                <Info className='h-5 w-5 text-orange-400 mt-0.5 flex-shrink-0' />
+                <AlertDescription className='text-sm font-medium text-orange-500/90'>
+                  Currently using local storage for chats. Messages are
+                  temporary and stored only in your browser.
+                </AlertDescription>
+              </div>
+            </Alert>
+          </div>
 
-        {/* Scrollable chat list */}
-        <div className='flex-1 min-h-0 overflow-y-auto'>
-          <div className='px-4 py-2'>
-            <div className='flex flex-col gap-2'>
-              {chatState.sessions.map((session) => (
-                <div key={session.id}>
-                  <Button
-                    variant={
-                      chatState.selectedId === session.id
-                        ? "secondary"
-                        : "ghost"
-                    }
-                    className={cn(
-                      "w-full flex items-center justify-between group px-3 py-2 transition-all duration-200 relative overflow-hidden",
-                      chatState.selectedId === session.id
-                        ? "bg-purple-500/10 hover:bg-purple-500/20 shadow-sm border border-purple-500/20"
-                        : "hover:bg-purple-500/5"
-                    )}
-                    onClick={() => selectChat(session.id)}
-                  >
-                    <div className='absolute inset-0 bg-gradient-to-r from-purple-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300' />
-                    <div className='flex items-center gap-2 flex-1 min-w-0 relative z-10'>
-                      <MessageSquare className='w-4 h-4 flex-shrink-0' />
-                      <span className='truncate text-sm'>
-                        {session.title || "New Chat"}
-                      </span>
-                    </div>
+          {/* Scrollable chat list */}
+          <div className='flex-1 min-h-0 overflow-y-auto'>
+            <div className='px-4 py-2'>
+              <div className='flex flex-col gap-2'>
+                {chatState.sessions.map((session) => (
+                  <div key={session.id}>
                     <Button
-                      variant='ghost'
-                      size='icon'
-                      className='opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 hover:bg-red-500/10 hover:text-red-500 relative z-10'
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteChat(session.id);
-                      }}
+                      variant={
+                        chatState.selectedId === session.id
+                          ? "secondary"
+                          : "ghost"
+                      }
+                      className={cn(
+                        "w-full flex items-center justify-between group px-3 py-2 transition-all duration-200 relative overflow-hidden",
+                        chatState.selectedId === session.id
+                          ? "bg-purple-500/10 hover:bg-purple-500/20 shadow-sm border border-purple-500/20"
+                          : "hover:bg-purple-500/5"
+                      )}
+                      onClick={() => selectChat(session.id)}
                     >
-                      <Trash className='h-4 w-4' />
+                      <div className='absolute inset-0 bg-gradient-to-r from-purple-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300' />
+                      <div className='flex items-center gap-2 flex-1 min-w-0 relative z-10'>
+                        <MessageSquare className='w-4 h-4 flex-shrink-0' />
+                        <span className='truncate text-sm'>
+                          {session.title || "New Chat"}
+                        </span>
+                      </div>
+                      <Button
+                        variant='ghost'
+                        size='icon'
+                        className='opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 hover:bg-red-500/10 hover:text-red-500 relative z-10'
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteChat(session.id);
+                        }}
+                      >
+                        <Trash className='h-4 w-4' />
+                      </Button>
                     </Button>
-                  </Button>
-                </div>
-              ))}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Fixed bottom section */}
-        <div className='p-4 border-t border-t-muted/20 bg-gradient-to-b from-transparent via-purple-500/5 to-purple-500/10'>
-          <Link href='/image-generator' className='w-full block mb-4'>
-            <Button
-              variant='ghost'
-              className='w-full flex items-center gap-3 hover:bg-purple-500/10 transition-all duration-300 group relative overflow-hidden px-3 py-2'
-            >
-              <div className='rounded-full bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 p-1.5 relative'>
-                <Sparkles className='w-4 h-4 text-white' />
+          {/* Fixed bottom section */}
+          <div className='p-4 border-t border-t-muted/20 bg-gradient-to-b from-transparent via-purple-500/5 to-purple-500/10'>
+            <Link href='/image-generator' className='w-full block mb-4'>
+              <Button
+                variant='ghost'
+                className='w-full flex items-center gap-3 hover:bg-purple-500/10 transition-all duration-300 group relative overflow-hidden px-3 py-2'
+              >
+                <div className='rounded-full bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 p-1.5 relative'>
+                  <Sparkles className='w-4 h-4 text-white' />
+                </div>
+                <span className='text-sm font-medium'>AI Image Generator</span>
+              </Button>
+            </Link>
+            <div className='flex flex-col items-center gap-2'>
+              <div className='h-px w-12 bg-gradient-to-r from-transparent via-purple-500/30 to-transparent' />
+              <div className='text-xs text-center font-medium bg-gradient-to-r from-purple-500 to-blue-500 bg-clip-text text-transparent'>
+                BK Zen Vibe Model
               </div>
-              <span className='text-sm font-medium'>AI Image Generator</span>
-            </Button>
-          </Link>
-          <div className='flex flex-col items-center gap-2'>
-            <div className='h-px w-12 bg-gradient-to-r from-transparent via-purple-500/30 to-transparent' />
-            <div className='text-xs text-center font-medium bg-gradient-to-r from-purple-500 to-blue-500 bg-clip-text text-transparent'>
-              BK Zen Vibe Model
             </div>
           </div>
         </div>
