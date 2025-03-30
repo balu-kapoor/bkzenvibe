@@ -166,21 +166,42 @@ export function ChatLayout() {
       {/* Sidebar */}
       <div
         className={cn(
-          "bg-background/50 border-r border-r-muted/20 flex flex-col backdrop-blur-xl transition-all duration-300 relative overflow-hidden",
+          "fixed md:relative bg-background/50 border-r border-r-muted/20 flex flex-col backdrop-blur-xl transition-all duration-300 overflow-hidden z-50 h-full",
           isSidebarOpen ? "w-64" : "w-0 border-r-0"
         )}
       >
         <div
           className={cn(
-            "absolute inset-0 flex flex-col w-64 transition-transform duration-300",
+            "absolute inset-0 flex flex-col w-64 transition-transform duration-300 bg-background/95 md:bg-transparent",
             isSidebarOpen ? "translate-x-0" : "-translate-x-full"
           )}
         >
+          {/* Backdrop overlay for mobile */}
+          <div
+            className={cn(
+              "fixed inset-0 bg-background/80 backdrop-blur-sm transition-opacity md:hidden",
+              isSidebarOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+            )}
+            onClick={() => setIsSidebarOpen(false)}
+          />
+
           {/* Top gradient overlay */}
           <div className='absolute inset-0 bg-gradient-to-b from-purple-500/5 via-transparent to-purple-500/10 pointer-events-none' />
 
+          {/* Close button for mobile */}
+          <div className='md:hidden absolute right-2 top-2 z-50'>
+            <Button
+              variant='ghost'
+              size='icon'
+              className='h-8 w-8 rounded-full hover:bg-purple-500/10 hover:text-purple-500'
+              onClick={() => setIsSidebarOpen(false)}
+            >
+              <X className='h-4 w-4' />
+            </Button>
+          </div>
+
           {/* Fixed top section */}
-          <div className='p-4 flex flex-col gap-4 relative z-10'>
+          <div className='p-4 pt-14 md:pt-4 flex flex-col gap-4 relative z-10'>
             <Button
               onClick={createNewChat}
               className='w-full flex items-center gap-2 bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 hover:from-purple-600 hover:via-blue-600 hover:to-purple-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] group relative overflow-hidden'
@@ -277,18 +298,14 @@ export function ChatLayout() {
       {/* Main chat area */}
       <div className='flex-1 flex flex-col bg-gradient-to-b from-background via-background/95 to-background/90 min-w-0'>
         {/* Header with toggle button */}
-        <div className='h-14 border-b border-b-muted/20 flex items-center px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75'>
+        <div className='h-12 sm:h-14 flex items-center px-2 sm:px-4'>
           <Button
             variant='ghost'
             size='icon'
-            className='h-8 w-8 rounded-full hover:bg-purple-500/10 hover:text-purple-500 transition-all duration-300'
+            className='h-8 w-8 rounded-full hover:bg-purple-500/10 hover:text-purple-500 transition-colors'
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           >
-            {isSidebarOpen ? (
-              <X className='h-4 w-4' />
-            ) : (
-              <Menu className='h-4 w-4' />
-            )}
+            <Menu className='h-4 w-4' />
           </Button>
         </div>
 
@@ -308,48 +325,63 @@ export function ChatLayout() {
               />
             </div>
           ) : (
-            <div className='absolute inset-0 flex flex-col items-center justify-center p-8 text-center overflow-y-auto'>
-              <div className='max-w-2xl mx-auto space-y-8'>
-                <div className='rounded-full bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 p-3 inline-block shadow-xl hover:shadow-purple-500/20 transition-shadow duration-300 relative'>
-                  <div className='absolute inset-0 bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 rounded-full blur-xl opacity-50' />
-                  <Sparkles className='w-8 h-8 text-white relative z-10' />
+            <div className='absolute inset-0 flex flex-col items-center justify-center p-4 sm:p-8 text-center overflow-y-auto'>
+              <div className='w-full max-w-2xl mx-auto space-y-6 sm:space-y-8'>
+                {/* Icon with gradient background */}
+                <div className='relative inline-block mx-auto'>
+                  <div className='rounded-full bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 p-3 sm:p-4 shadow-xl hover:shadow-purple-500/20 transition-shadow duration-300'>
+                    <div className='absolute inset-0 bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 rounded-full blur-xl opacity-50' />
+                    <Sparkles className='w-6 h-6 sm:w-8 sm:h-8 text-white relative z-10' />
+                  </div>
+                  {/* Decorative circles */}
+                  <div className='absolute -inset-4 bg-gradient-to-r from-purple-500/20 via-blue-500/20 to-purple-500/20 rounded-full blur-2xl opacity-30 animate-pulse' />
                 </div>
-                <h1 className='text-4xl font-bold bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 bg-clip-text text-transparent relative'>
-                  Welcome to BK Zen Vibe AI
-                  <div className='absolute -inset-1 bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 opacity-20 blur-2xl -z-10' />
-                </h1>
-                <p className='text-lg text-muted-foreground'>
+
+                {/* Title with enhanced mobile styling */}
+                <div className='relative'>
+                  <h1 className='text-3xl sm:text-4xl font-bold bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 bg-clip-text text-transparent relative'>
+                    Welcome to BK Zen Vibe AI
+                    <div className='absolute -inset-1 bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 opacity-20 blur-2xl -z-10' />
+                  </h1>
+                </div>
+
+                {/* Subtitle with improved spacing */}
+                <p className='text-base sm:text-lg text-muted-foreground max-w-xl mx-auto'>
                   Your intelligent companion for creative and technical
                   discussions.
-                  <br />
+                  <br className='hidden sm:block' />
                   Start a new chat or select an existing one to begin.
                 </p>
-                <div className='grid grid-cols-1 md:grid-cols-2 gap-4 mt-8'>
-                  <div className='p-6 rounded-lg border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 transition-all duration-300 group relative overflow-hidden'>
+
+                {/* Feature cards with better mobile layout */}
+                <div className='grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-4 sm:mt-8'>
+                  <div className='p-4 sm:p-6 rounded-lg border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 transition-all duration-300 group relative overflow-hidden'>
                     <div className='absolute inset-0 bg-gradient-to-br from-purple-500/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300' />
-                    <FileText className='w-6 h-6 mb-3 text-purple-500 relative z-10' />
-                    <h3 className='font-semibold mb-2 relative z-10'>
+                    <FileText className='w-5 h-5 sm:w-6 sm:h-6 mb-2 sm:mb-3 text-purple-500 relative z-10' />
+                    <h3 className='font-semibold mb-1 sm:mb-2 relative z-10 text-sm sm:text-base'>
                       Smart Conversations
                     </h3>
-                    <p className='text-sm text-muted-foreground relative z-10'>
+                    <p className='text-xs sm:text-sm text-muted-foreground relative z-10'>
                       Engage in natural conversations with context-aware
                       responses
                     </p>
                   </div>
-                  <div className='p-6 rounded-lg border border-blue-500/20 bg-blue-500/5 hover:bg-blue-500/10 transition-all duration-300 group relative overflow-hidden'>
+                  <div className='p-4 sm:p-6 rounded-lg border border-blue-500/20 bg-blue-500/5 hover:bg-blue-500/10 transition-all duration-300 group relative overflow-hidden'>
                     <div className='absolute inset-0 bg-gradient-to-br from-blue-500/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300' />
-                    <Settings className='w-6 h-6 mb-3 text-blue-500 relative z-10' />
-                    <h3 className='font-semibold mb-2 relative z-10'>
+                    <Settings className='w-5 h-5 sm:w-6 sm:h-6 mb-2 sm:mb-3 text-blue-500 relative z-10' />
+                    <h3 className='font-semibold mb-1 sm:mb-2 relative z-10 text-sm sm:text-base'>
                       Technical Expertise
                     </h3>
-                    <p className='text-sm text-muted-foreground relative z-10'>
+                    <p className='text-xs sm:text-sm text-muted-foreground relative z-10'>
                       Get help with coding, design, and technical challenges
                     </p>
                   </div>
                 </div>
+
+                {/* Start button with enhanced mobile styling */}
                 <Button
                   onClick={createNewChat}
-                  className='mt-6 bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 hover:from-purple-600 hover:via-blue-600 hover:to-purple-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] px-6 py-2 text-base font-medium relative group overflow-hidden'
+                  className='mt-4 sm:mt-6 w-full sm:w-auto bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 hover:from-purple-600 hover:via-blue-600 hover:to-purple-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] px-4 sm:px-6 py-2 text-sm sm:text-base font-medium relative group overflow-hidden'
                 >
                   <div className='absolute inset-0 bg-gradient-to-r from-white/10 via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300' />
                   <PlusCircle className='w-4 h-4 mr-2 relative z-10' />
