@@ -3,6 +3,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { ScrollArea } from "./ui/scroll-area";
 import { MessageContent } from "./message-content";
+import { AnimatedMessageContent } from "./animated-message-content";
 import { 
   Loader2, Square, Send, User, Paperclip, FileText, 
   File as FilePdf, X 
@@ -18,6 +19,8 @@ import {
 import { Progress } from "./ui/progress";
 import { Badge } from "./ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { processFileForChat } from "@/components/file-processor";
+import { formatFileSize } from "@/lib/client-document-processor";
 
 // Custom AI Bot Icon component
 const AIBotIcon = () => {
@@ -143,14 +146,10 @@ export function Chat() {
     return "document";
   };
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return bytes + " B";
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-  };
+  // Using formatFileSize from our client-document-processor library
 
   const readFileContent = async (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       if (file.type.startsWith("image/")) {
         resolve(""); // Skip reading image content
         return;
@@ -178,9 +177,31 @@ The AI will respond based on your description and questions, not based on any au
       
       // Handle DOC/DOCX files
       if (file.type === "application/msword" || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-        // For Word documents, we would need a specialized library like mammoth.js
-        // This is a placeholder for future implementation
-        resolve(`[Word document: ${file.name} - Text extraction not implemented yet. Please convert to PDF or plain text for better results.]`);
+        try {
+          // Process DOC/DOCX using our document processing API
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('prompt', 'Extract and analyze the content of this document.');
+          
+          const response = await fetch('/api/process-document', {
+            method: 'POST',
+            body: formData
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to process document: ${response.status} ${response.statusText}`);
+          }
+          
+          const result = await response.json();
+          const docContent = `[DOCUMENT PROCESSED: ${file.name} (${formatFileSize(file.size)})]\n\nDocument Analysis:\n${result.text}\n\nYou can ask follow-up questions about this document.`;
+          
+          resolve(docContent);
+        } catch (error) {
+          console.error('Error processing document:', error);
+          // Fallback message if processing fails
+          const fallbackMsg = `[DOCUMENT ATTACHED: ${file.name} (${formatFileSize(file.size)})]\n\nI've attached a document, but there was an error processing it automatically. Please describe what this document contains in your own words.`;
+          resolve(fallbackMsg);
+        }
         return;
       }
 
@@ -348,7 +369,7 @@ The AI will respond based on your description and questions, not based on any au
     try {
       console.log("Sending file content:", fileContent); // Debug log
       
-      const response = await fetch("/api/chat", {
+      const response = await fetch("/api/chat-stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -588,7 +609,11 @@ The AI will respond based on your description and questions, not based on any au
                       : "bg-muted"
                   )}
                 >
-                  <MessageContent content={message.content} />
+                  {message.role === "assistant" ? (
+                    <AnimatedMessageContent content={message.content} />
+                  ) : (
+                    <MessageContent content={message.content} />
+                  )}
                 </div>
               </div>
               {message.role === "user" && (
@@ -604,7 +629,7 @@ The AI will respond based on your description and questions, not based on any au
                 <AIBotIcon />
               </div>
               <div className='bg-muted rounded-2xl px-4 py-3'>
-                <MessageContent content={streamingContent} />
+                <AnimatedMessageContent content={streamingContent} isStreaming={true} typingSpeed={10} />
                 <span className='inline-flex ml-1'>
                   <span className='h-1.5 w-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]'></span>
                   <span className='h-1.5 w-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s] mx-1'></span>
