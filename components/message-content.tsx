@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Check, Copy } from "lucide-react";
 import type { Components } from "react-markdown";
 import type { CSSProperties } from "react";
+import { toast } from "@/components/ui/use-toast";
 
 interface MessageContentProps {
   content: string;
@@ -51,6 +52,10 @@ export function MessageContent({
     await navigator.clipboard.writeText(code);
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(null), 2000);
+    toast({
+      title: "Copied!",
+      description: "Code copied to clipboard",
+    });
   };
 
   return (
@@ -64,7 +69,23 @@ export function MessageContent({
         remarkPlugins={[remarkGfm]}
         className='prose prose-sm dark:prose-invert max-w-none break-words w-full'
         components={{
-          code({ className, children, ...props }) {
+          pre: ({ children }) => (
+            <div className='relative w-full overflow-hidden rounded-lg bg-gray-800'>
+              <div className='overflow-x-auto'>
+                <pre className='!m-0 !p-4 text-sm'>{children}</pre>
+              </div>
+              <button
+                onClick={() => {
+                  const code = children?.toString() || "";
+                  handleCopy(code);
+                }}
+                className='absolute right-2 top-2 rounded-md bg-gray-700 p-2 text-gray-400 hover:bg-gray-600 hover:text-gray-300'
+              >
+                <Copy className='h-4 w-4' />
+              </button>
+            </div>
+          ),
+          code: ({ className, children, ...props }) => {
             const match = /language-(\w+)/.exec(className || "");
             const code = String(children).replace(/\n$/, "");
 
@@ -92,8 +113,8 @@ export function MessageContent({
                     <div className='sticky left-0 right-0 top-0 bg-gray-900 px-4 py-2 text-xs text-gray-400 border-b border-gray-800 flex items-center justify-between'>
                       <span>{match[1]}</span>
                     </div>
-                    <div className='relative w-full overflow-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent'>
-                      <div style={{ width: "max-content", minWidth: "100%" }}>
+                    <div className='relative w-full overflow-x-auto'>
+                      <div className='min-w-full'>
                         <SyntaxHighlighter
                           style={vscDarkPlus}
                           language={match[1]}
@@ -105,9 +126,11 @@ export function MessageContent({
                               margin: "0",
                               padding: "1rem",
                               backgroundColor: "#1a1a1a",
-                            } as { [key: string]: string }
+                              width: "100%",
+                              minWidth: "100%",
+                              overflowX: "auto",
+                            } satisfies CSSProperties
                           }
-                          {...props}
                         >
                           {code}
                         </SyntaxHighlighter>

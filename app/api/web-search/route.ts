@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 import { performGoogleSearch } from '@/lib/google-search';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+// Initialize Gemini
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 export async function POST(req: Request) {
   try {
@@ -19,68 +23,55 @@ export async function POST(req: Request) {
     console.log('Checking environment variables:');
     console.log('GOOGLE_SEARCH_API_KEY exists:', !!process.env.GOOGLE_SEARCH_API_KEY);
     console.log('GOOGLE_SEARCH_ENGINE_ID exists:', !!process.env.GOOGLE_SEARCH_ENGINE_ID);
+    console.log('GEMINI_API_KEY exists:', !!process.env.GEMINI_API_KEY);
 
-    // Create a TransformStream for streaming the response
-    const stream = new TransformStream();
-    const writer = stream.writable.getWriter();
-    const encoder = new TextEncoder();
+    // Perform web search using our utility function
+    console.log('Calling performGoogleSearch...');
+    const results = await performGoogleSearch(query);
+    console.log('Search results received:', results ? 'Yes' : 'No');
 
-    // Start the search process
-    (async () => {
-      try {
-        // Perform web search using our utility function
-        console.log('Calling performGoogleSearch...');
-        const results = await performGoogleSearch(query);
-        console.log('Search results received:', results ? 'Yes' : 'No');
+    if (!results || results.length === 0) {
+      console.log('No results found');
+      return NextResponse.json({ results: [] });
+    }
 
-        if (!results || results.length === 0) {
-          console.log('No results found');
-          await writer.write(encoder.encode('data: ' + JSON.stringify({ results: [] }) + '\n\n'));
-          await writer.close();
-          return;
-        }
+    // Format the search results for Gemini
+    const formattedResults = results.map((item: any) => ({
+      title: item.title,
+      link: item.link,
+      snippet: item.snippet,
+      date: item.pagemap?.metatags?.[0]?.['article:published_time'] || 
+            item.pagemap?.metatags?.[0]?.['og:updated_time'] ||
+            item.pagemap?.metatags?.[0]?.['date'] ||
+            null,
+    }));
 
-        // Format the search results
-        console.log('Formatting results...');
-        const formattedResults = results.map((item: any) => ({
-          title: item.title,
-          link: item.link,
-          snippet: item.snippet,
-          date: item.pagemap?.metatags?.[0]?.['article:published_time'] || 
-                item.pagemap?.metatags?.[0]?.['og:updated_time'] ||
-                item.pagemap?.metatags?.[0]?.['date'] ||
-                null,
-        }));
-        console.log('Results formatted successfully');
+    // Create a prompt for Gemini
+    const prompt = `Based on the following search results for "${query}", provide a comprehensive and well-structured response. Include relevant information from the sources and cite them when appropriate. Make the response conversational and easy to understand.
 
-        // Stream each result with a delay for typing effect
-        for (let i = 0; i < formattedResults.length; i++) {
-          const result = formattedResults[i];
-          await writer.write(encoder.encode('data: ' + JSON.stringify({ 
-            results: [result],
-            isLast: i === formattedResults.length - 1 
-          }) + '\n\n'));
-          // Add a delay between results for typing effect
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
+Search Results:
+${formattedResults.map((result, index) => `
+${index + 1}. ${result.title}
+${result.snippet}
+Source: ${result.link}
+${result.date ? `Last Updated: ${new Date(result.date).toLocaleString()}` : ''}
+`).join('\n')}
 
-        await writer.close();
-      } catch (error) {
-        console.error('Error in search stream:', error);
-        await writer.write(encoder.encode('data: ' + JSON.stringify({ 
-          error: 'Failed to perform web search' 
-        }) + '\n\n'));
-        await writer.close();
-      }
-    })();
+Please provide a clear and informative response that synthesizes the information from these sources.`;
 
-    // Return the stream response
-    return new Response(stream.readable, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      },
+    // Get Gemini's response using Gemini 2.0 Flash
+    console.log('Getting Gemini response...');
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const geminiResponse = await model.generateContent(prompt);
+    const response = await geminiResponse.response;
+    const text = response.text();
+
+    console.log('Gemini response received');
+    return NextResponse.json({ 
+      results: [{
+        title: "Search Results",
+        content: text
+      }]
     });
   } catch (error) {
     console.error('Web search error details:', {

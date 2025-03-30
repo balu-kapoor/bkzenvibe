@@ -866,44 +866,19 @@ export function EnhancedChat({
         throw new Error("Search failed");
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("No reader available");
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
       }
 
-      let accumulatedResults: any[] = [];
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        // Convert the chunk to text
-        const chunk = new TextDecoder().decode(value);
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = JSON.parse(line.slice(6));
-
-            if (data.error) {
-              throw new Error(data.error);
-            }
-
-            if (data.results) {
-              accumulatedResults = data.results;
-            }
-          }
-        }
-      }
-
-      // Only add the final search results message once
-      if (accumulatedResults.length > 0) {
-        const searchMessage = formatSearchResults(accumulatedResults);
+      if (data.results && data.results.length > 0) {
+        // Add the Gemini-processed search results as an assistant message
         setMessages((prev) => [
           ...prev,
           {
             role: "assistant",
-            content: searchMessage,
+            content: data.results[0].content,
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -929,20 +904,6 @@ export function EnhancedChat({
       });
       setIsSearching(false);
     }
-  };
-
-  const formatSearchResults = (results: any[]) => {
-    if (!results || results.length === 0) {
-      return "No results found.";
-    }
-
-    return `Here are the search results:\n\n${results
-      .map((result, index) => {
-        return `${index + 1}. **[${result.title}](${result.link})**\n${
-          result.snippet
-        }\n`;
-      })
-      .join("\n")}`;
   };
 
   return (
