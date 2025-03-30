@@ -1082,7 +1082,7 @@ export function EnhancedChat({
           <div className='flex items-center gap-2 p-2 rounded-xl bg-muted/50 border border-muted/30'>
             <Input
               placeholder={
-                isSearchMode ? "Search the web..." : "How can I help you today?"
+                isSearchMode ? "Search the web..." : "Ask BK Gen Vibe..."
               }
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -1100,21 +1100,22 @@ export function EnhancedChat({
               className='flex-1 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-base placeholder:text-muted-foreground/70'
             />
 
-            <div className='flex items-center gap-1'>
+            <div className='flex items-center gap-2'>
               <Button
                 variant='ghost'
-                size='icon'
                 className={cn(
-                  "h-8 w-8 rounded-lg transition-colors",
+                  "h-8 rounded-lg transition-colors flex items-center gap-2 px-3",
                   isSearchMode
-                    ? "bg-purple-500/10 text-purple-500"
-                    : "hover:bg-purple-500/10 hover:text-purple-500"
+                    ? "bg-purple-600 text-white hover:text-white hover:bg-purple-700"
+                    : "bg-transparent text-gray-400 hover:bg-gray-800/80 hover:text-white"
                 )}
                 onClick={() => setIsSearchMode(!isSearchMode)}
                 disabled={isLoading || isSearching}
+                title={
+                  isSearchMode ? "Switch to chat mode" : "Switch to search mode"
+                }
               >
                 <Search className='h-4 w-4' />
-                <span className='sr-only'>Search mode</span>
               </Button>
 
               <div className='h-4 w-px bg-muted-foreground/20' />
