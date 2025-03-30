@@ -13,15 +13,13 @@ const dailyRequestCounts = new Map<string, DailyRequestCount>();
 const MAX_GEMINI_25_REQUESTS_PER_DAY = 50;
 
 // Model names
-// Using the correct model names available in the v1beta API
-// For premium tier (first 50 requests), use gemini-1.5-pro which has better capabilities
-export const GEMINI_25_MODEL = "gemini-1.5-pro";
-// For standard tier (after 50 requests), use gemini-1.0-pro which is more cost-effective
-export const GEMINI_20_MODEL = "gemini-pro";
+// Using the correct model names for Google Generative AI SDK
+export const GEMINI_25_MODEL = "gemini-2.0-flash";  // Using flash model for better performance
+export const GEMINI_20_MODEL = "gemini-2.0-flash";  // Using flash model for better performance
 
 /**
  * Get the appropriate model based on daily usage
- * Uses Gemini 2.5 for the first 50 requests per day, then falls back to Gemini 2.0
+ * Uses Gemini Flash for better stability and rate limits
  */
 export function getAppropriateModel(ip: string): string {
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
@@ -37,12 +35,8 @@ export function getAppropriateModel(ip: string): string {
   userRequests.count++;
   dailyRequestCounts.set(ip, userRequests);
   
-  // Determine which model to use based on daily count
-  if (userRequests.count <= MAX_GEMINI_25_REQUESTS_PER_DAY) {
-    return GEMINI_25_MODEL;
-  } else {
-    return GEMINI_20_MODEL;
-  }
+  // Use gemini-2.0-flash for all requests for better stability
+  return GEMINI_20_MODEL;
 }
 
 /**

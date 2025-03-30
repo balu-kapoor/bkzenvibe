@@ -1,11 +1,18 @@
 import { NextResponse } from 'next/server';
 import { getAppropriateModel, getRemainingGemini25Requests } from '@/lib/model-utils';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 
 // Add export config for Edge Runtime
 export const runtime = 'edge';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1/models';
+
+// Initialize the Google GenAI client
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY || '');
+
+// Create encoder for streaming
+const encoder = new TextEncoder();
 
 // Function to check if the message is asking about the model
 function isAskingAboutModel(message: string): boolean {
@@ -344,7 +351,6 @@ function createEnhancedStreamingResponse(
 export async function POST(req: Request) {
   const ip = req.headers.get('x-forwarded-for') || 'unknown-ip';
   try {
-    checkRateLimit(ip);
     const { messages, fileContent, editIndex } = await req.json();
     
     // Select the appropriate model based on daily usage
@@ -354,16 +360,8 @@ export async function POST(req: Request) {
     // Log model selection for debugging
     console.log(`Using model: ${selectedModel} for IP: ${ip} (${remainingGemini25Requests} premium requests remaining today)`);
 
-    // If editing a message, replace it in the messages array
-    if (typeof editIndex === 'number' && editIndex >= 0) {
-      const editedMessage = messages[editIndex];
-      if (editedMessage) {
-        messages.splice(editIndex, 1, editedMessage);
-      }
-    }
-
     if (!GEMINI_API_KEY) {
-      throw new LLMError('Gemini API key is not configured', 500, false);
+      throw new Error('Gemini API key is not configured');
     }
 
     // Check if the last user message is asking about the model
@@ -388,45 +386,39 @@ Important: If the files contain code, please analyze it thoroughly. If the user 
         ]
       : messages;
 
-    // Add timeout and retry logic for Vercel
+    // Add timeout and retry logic with exponential backoff
     let retries = 3;
-    let response;
+    let delay = 1000; // Start with 1 second delay
     
     while (retries > 0) {
       try {
-        // Convert messages to Gemini format
-        // Gemini expects a single contents array with role-based messages
-        const contents = [];
+        // Initialize the model
+        const model = genAI.getGenerativeModel({ model: selectedModel });
         
-        // Handle system messages by converting them to user messages
-        // and combining them with the next user message if possible
+        // Convert messages to Gemini format
+        const contents = [];
         let pendingSystemContent = '';
         
         for (let i = 0; i < processedMessages.length; i++) {
           const msg = processedMessages[i];
           
           if (msg.role === 'system') {
-            // Collect system messages to prepend to the next user message
             pendingSystemContent += (pendingSystemContent ? '\n\n' : '') + msg.content;
             continue;
           }
           
           if (msg.role === 'user') {
-            // If we have pending system content, prepend it to this user message
             const userContent = pendingSystemContent 
               ? `[System Instructions: ${pendingSystemContent}]\n\n${msg.content}`
               : msg.content;
             
-            // Add the user message
             contents.push({
               role: 'user',
               parts: [{ text: userContent }]
             });
             
-            // Clear pending system content
             pendingSystemContent = '';
           } else if (msg.role === 'assistant') {
-            // Add assistant message
             contents.push({
               role: 'model',
               parts: [{ text: msg.content }]
@@ -434,7 +426,6 @@ Important: If the files contain code, please analyze it thoroughly. If the user 
           }
         }
         
-        // If there are only system messages and no user messages, create a user message
         if (contents.length === 0 && pendingSystemContent) {
           contents.push({
             role: 'user',
@@ -442,119 +433,94 @@ Important: If the files contain code, please analyze it thoroughly. If the user 
           });
         }
         
-        // Ensure there's at least one message
         if (contents.length === 0) {
-          throw new LLMError('No valid messages to send to Gemini API', 400, false);
+          throw new Error('No valid messages to send to Gemini API');
         }
         
-        // Ensure conversation ends with a user message (Gemini requirement)
         const lastMessage = contents[contents.length - 1];
         if (lastMessage.role !== 'user') {
-          throw new LLMError('Conversation must end with a user message for Gemini API', 400, false);
+          throw new Error('Conversation must end with a user message for Gemini API');
         }
         
-        // Construct the URL with API key and selected model
-        const apiUrl = `${GEMINI_API_BASE_URL}/${selectedModel}:generateContent?key=${GEMINI_API_KEY}`;
-        
-        // Log request for debugging (remove in production)
-        console.log('Sending to Gemini:', JSON.stringify({
-          contents: contents,
+        // Start the chat with the correct configuration
+        const chat = model.startChat({
+          history: contents.slice(0, -1),
           generationConfig: {
             temperature: 0.7,
             maxOutputTokens: 8192,
             topP: 0.95,
             topK: 40
           }
-        }, null, 2));
+        });
+
+        // Send the last message and get the response stream
+        const result = await chat.sendMessageStream(lastMessage.parts[0].text);
         
-        response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            contents: contents,
-            generationConfig: {
-              temperature: 0.7,
-              maxOutputTokens: 8192,
-              topP: 0.95,
-              topK: 40
-            },
-            safetySettings: [
-              {
-                category: "HARM_CATEGORY_HARASSMENT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              },
-              {
-                category: "HARM_CATEGORY_HATE_SPEECH",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              },
-              {
-                category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              },
-              {
-                category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
+        // Create a readable stream from the response
+        const stream = new ReadableStream({
+          async start(controller) {
+            try {
+              for await (const chunk of result.stream) {
+                const text = chunk.text();
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: text })}\n\n`));
               }
-            ],
-            stream: true
-          }),
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+              controller.close();
+            } catch (error: unknown) {
+              const errorMessage = error instanceof Error ? error.message : 'Unknown streaming error occurred';
+              console.error('Stream processing error:', errorMessage);
+              controller.error(new Error(errorMessage));
+            }
+          }
+        });
+
+        return new Response(stream, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache, no-transform',
+            'Connection': 'keep-alive',
+          },
         });
         
-        if (response.ok) break;
+      } catch (error: unknown) {
+        console.error('Chat error:', error);
         
-        // If we get a rate limit error, wait and retry
-        if (response.status === 429) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          retries--;
-          continue;
+        // Check if it's a rate limit error
+        if (error instanceof Error && 
+            (error.message.includes('429') || 
+             error.message.toLowerCase().includes('rate limit') ||
+             error.message.toLowerCase().includes('too many requests'))) {
+          if (retries > 1) {
+            console.log(`Rate limit hit. Retrying in ${delay}ms... (${retries - 1} retries left)`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            retries--;
+            delay *= 2; // Exponential backoff
+            continue;
+          }
         }
         
-        // For other errors, throw immediately
-        try {
-          const errorJson = await response.json();
-          console.error('Gemini API error:', errorJson);
-          throw new LLMError(
-            errorJson.error?.message || 'Failed to fetch response',
-            response.status
-          );
-        } catch (jsonError) {
-          // If we can't parse the error as JSON, use the status text
-          console.error('Error parsing Gemini API error:', jsonError);
-          throw new LLMError(
-            `Failed to fetch response: ${response.status} ${response.statusText}`,
-            response.status
-          );
-        }
-      } catch (fetchError) {
-        if (retries <= 1) throw fetchError;
-        retries--;
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // For other errors, or if we're out of retries, throw the error
+        throw error;
       }
     }
 
-    if (!response || !response.ok) {
-      throw new LLMError('Failed to get response after retries', 500);
-    }
-
-    return createEnhancedStreamingResponse(response, ip);
-  } catch (error) {
-    if (error instanceof LLMError) {
-      return new Response(
-        JSON.stringify({ error: error.message }),
-        { 
-          status: error.statusCode,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
-    }
+    throw new Error('Failed to get response after retries');
+  } catch (error: unknown) {
     console.error('Unexpected error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    const statusCode = errorMessage.includes('429') ? 429 : 500;
+    
     return new Response(
-      JSON.stringify({ error: 'An unexpected error occurred' }),
+      JSON.stringify({ 
+        error: errorMessage,
+        retryAfter: statusCode === 429 ? 5 : undefined // Suggest retry after 5 seconds for rate limits
+      }),
       { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
+        status: statusCode,
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(statusCode === 429 ? { 'Retry-After': '5' } : {})
+        }
       }
     );
   }
