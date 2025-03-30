@@ -13,6 +13,16 @@ import {
   File as FilePdf,
   X,
   Pencil,
+  Brain,
+  Search,
+  Box,
+  Package,
+  Image,
+  Play,
+  Upload,
+  ArrowUpCircle,
+  FileIcon,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -32,6 +42,7 @@ import {
 } from "./ui/tooltip";
 import { processFileForChat } from "@/components/file-processor";
 import { formatFileSize } from "@/lib/client-document-processor";
+import { useToast } from "@/components/ui/use-toast";
 
 // Custom AI Bot Icon component
 const AIBotIcon = () => {
@@ -71,6 +82,7 @@ interface Message {
     content?: string;
     mimeType?: string;
   }[];
+  timestamp?: string;
 }
 
 interface EnhancedChatProps {
@@ -84,6 +96,7 @@ export function EnhancedChat({
   initialMessages = [],
   onMessagesChange,
 }: EnhancedChatProps) {
+  const { toast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -108,6 +121,46 @@ export function EnhancedChat({
   const currentAbortControllerRef = useRef<AbortController | null>(null);
   const [error, setError] = useState("");
   const isInitialMount = useRef(true);
+  const [isSearchMode, setIsSearchMode] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  // Add file validation constants
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB in bytes
+  const MAX_FILES = 10;
+  const ALLOWED_FILE_TYPES = new Set([
+    // Documents
+    "text/plain",
+    "text/markdown",
+    "text/csv",
+    "application/json",
+    "application/pdf",
+    // Web development files
+    "text/html",
+    "text/css",
+    "text/javascript",
+    "application/javascript",
+    "text/typescript",
+    "application/typescript",
+    // Images
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/svg+xml",
+    "image/webp",
+    // Office documents
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    // Other safe formats
+    "application/xml",
+    "text/xml",
+    "application/x-yaml",
+    "text/x-yaml",
+  ]);
 
   // Initialize messages after mount
   useEffect(() => {
@@ -186,80 +239,79 @@ export function EnhancedChat({
   };
 
   const getFileType = (file: File): "image" | "pdf" | "code" | "document" => {
-    // Handle case where file type is undefined or empty
+    // Handle case where file.type might be undefined or empty
     const mimeType = file.type || "";
+    const fileName = file.name || "";
+    const extension = "." + fileName.split(".").pop()?.toLowerCase();
 
+    // Check MIME type first
     if (mimeType.startsWith("image/")) return "image";
     if (mimeType === "application/pdf") return "pdf";
-
-    // Get file extension
-    const fileName = file.name || "";
-    const extension = fileName.split(".").pop()?.toLowerCase() || "";
 
     // Expanded list of programming file extensions
     const codeExtensions = [
       // Web development
-      "js",
-      "ts",
-      "jsx",
-      "tsx",
-      "html",
-      "css",
-      "scss",
-      "sass",
-      "less",
+      ".js",
+      ".ts",
+      ".jsx",
+      ".tsx",
+      ".html",
+      ".css",
+      ".scss",
+      ".sass",
+      ".less",
       // Backend
-      "py",
-      "rb",
-      "php",
-      "java",
-      "cs",
-      "go",
-      "rs",
-      "c",
-      "cpp",
-      "h",
-      "hpp",
+      ".py",
+      ".rb",
+      ".php",
+      ".java",
+      ".cs",
+      ".go",
+      ".rs",
+      ".c",
+      ".cpp",
+      ".h",
+      ".hpp",
       // Data/Config
-      "json",
-      "xml",
-      "yaml",
-      "yml",
-      "toml",
-      "ini",
-      "env",
+      ".json",
+      ".xml",
+      ".yaml",
+      ".yml",
+      ".toml",
+      ".ini",
+      ".env",
       // Mobile
-      "swift",
-      "kt",
-      "m",
-      "mm",
+      ".swift",
+      ".kt",
+      ".m",
+      ".mm",
       // Shell/Scripts
-      "sh",
-      "bash",
-      "zsh",
-      "ps1",
-      "bat",
-      "cmd",
+      ".sh",
+      ".bash",
+      ".zsh",
+      ".ps1",
+      ".bat",
+      ".cmd",
       // Other languages
-      "lua",
-      "r",
-      "pl",
-      "ex",
-      "exs",
-      "erl",
-      "fs",
-      "fsx",
-      "dart",
-      "scala",
+      ".lua",
+      ".r",
+      ".pl",
+      ".ex",
+      ".exs",
+      ".erl",
+      ".fs",
+      ".fsx",
+      ".dart",
+      ".scala",
       // Markup/Documentation
-      "md",
-      "mdx",
-      "rst",
-      "tex",
+      ".md",
+      ".mdx",
+      ".rst",
+      ".tex",
       // Database
-      "sql",
-      "graphql",
-      "prisma",
+      ".sql",
+      ".graphql",
+      ".prisma",
     ];
 
     // Check file extension against the list
@@ -359,10 +411,65 @@ export function EnhancedChat({
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setAttachedFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+    const files = e.target.files;
+    if (!files) return;
+
+    // Convert FileList to Array
+    const fileArray = Array.from(files);
+
+    // Check if adding these files would exceed the maximum
+    if (attachedFiles.length + fileArray.length > MAX_FILES) {
+      toast({
+        variant: "destructive",
+        title: "Too many files",
+        description: `You can only upload a maximum of ${MAX_FILES} files at a time.`,
+      });
+      return;
     }
-    // Reset the input value so the same file can be selected again
+
+    // Filter and validate files
+    const validFiles = fileArray.filter((file) => {
+      // Check file size
+      if (file.size > MAX_FILE_SIZE) {
+        toast({
+          variant: "destructive",
+          title: "File too large",
+          description: `${file.name} is larger than 10MB`,
+        });
+        return false;
+      }
+
+      // Check file type
+      const fileType = file.type.toLowerCase();
+      if (!ALLOWED_FILE_TYPES.has(fileType)) {
+        toast({
+          variant: "destructive",
+          title: "Unsupported file type",
+          description: `${file.name} is not a supported file type`,
+        });
+        return false;
+      }
+
+      return true;
+    });
+
+    // Update state only with valid files
+    if (validFiles.length > 0) {
+      setAttachedFiles((prev) => [...prev, ...validFiles]);
+
+      // Show success toast if some files were added
+      if (validFiles.length !== fileArray.length) {
+        toast({
+          description: `${validFiles.length} file(s) added. Some files were skipped.`,
+        });
+      } else {
+        toast({
+          description: `${validFiles.length} file(s) added successfully.`,
+        });
+      }
+    }
+
+    // Reset input value so the same file can be selected again
     if (e.target.value) {
       e.target.value = "";
     }
@@ -528,28 +635,7 @@ export function EnhancedChat({
     );
   };
 
-  // Add isRealTimeQuery helper function
-  function isRealTimeQuery(message: string): boolean {
-    const realTimeKeywords = [
-      "current",
-      "latest",
-      "recent",
-      "today",
-      "now",
-      "live",
-      "update",
-      "news",
-      "weather",
-      "price",
-      "stock",
-      "score",
-    ];
-
-    const message_lower = message.toLowerCase();
-    return realTimeKeywords.some((keyword) => message_lower.includes(keyword));
-  }
-
-  // Update the sendMessageToAPI function
+  // Update sendMessageToAPI function
   const sendMessageToAPI = async (
     userMessage: Message,
     fileContent: string = ""
@@ -751,11 +837,112 @@ export function EnhancedChat({
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
+  const handleSearch = async () => {
+    if (!input.trim()) return;
+
+    const query = input.trim();
+    setInput("");
+    setIsSearching(true);
+    setSearchResults([]);
+
+    // Add user's search query to messages without the search icon
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: query,
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+
+    try {
+      const response = await fetch("/api/web-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Search failed");
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("No reader available");
+      }
+
+      let accumulatedResults: any[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        // Convert the chunk to text
+        const chunk = new TextDecoder().decode(value);
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = JSON.parse(line.slice(6));
+
+            if (data.error) {
+              throw new Error(data.error);
+            }
+
+            if (data.results) {
+              accumulatedResults = data.results;
+            }
+          }
+        }
+      }
+
+      // Only add the final search results message once
+      if (accumulatedResults.length > 0) {
+        const searchMessage = formatSearchResults(accumulatedResults);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: searchMessage,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "No results found.",
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      }
+
+      setIsSearching(false);
+    } catch (error) {
+      console.error("Search error:", error);
+      toast({
+        title: "Search Error",
+        description:
+          error instanceof Error ? error.message : "Failed to perform search",
+        variant: "destructive",
+      });
+      setIsSearching(false);
     }
+  };
+
+  const formatSearchResults = (results: any[]) => {
+    if (!results || results.length === 0) {
+      return "No results found.";
+    }
+
+    return `Here are the search results:\n\n${results
+      .map((result, index) => {
+        return `${index + 1}. **[${result.title}](${result.link})**\n${
+          result.snippet
+        }\n`;
+      })
+      .join("\n")}`;
   };
 
   return (
@@ -902,25 +1089,9 @@ export function EnhancedChat({
         </div>
       )}
 
-      <div className='border-t p-2 sm:p-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75 sticky bottom-0'>
-        {editingMessageIndex !== null && (
-          <div className='mb-2 flex items-center justify-between bg-yellow-500/10 text-yellow-600 px-2 sm:px-3 py-1 rounded-md'>
-            <span className='text-xs sm:text-sm font-medium'>
-              Editing message...
-            </span>
-            <Button
-              variant='ghost'
-              size='sm'
-              className='h-6 sm:h-7 text-xs hover:bg-yellow-500/20'
-              onClick={handleCancelEdit}
-            >
-              Cancel
-            </Button>
-          </div>
-        )}
-
+      <div className='flex flex-col gap-2 p-4 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60'>
         {attachedFiles.length > 0 && (
-          <div className='flex flex-wrap gap-1.5 sm:gap-2 mb-2 sm:mb-4 max-h-32 overflow-y-auto'>
+          <div className='flex flex-wrap gap-1.5 sm:gap-2 mb-2'>
             {attachedFiles.map((file, index) => (
               <Badge
                 key={index}
@@ -946,60 +1117,99 @@ export function EnhancedChat({
           </div>
         )}
 
-        <div className='flex items-center gap-1.5 sm:gap-2'>
-          <Input
-            placeholder={
-              editingMessageIndex !== null
-                ? "Edit your message..."
-                : "Ask me anything..."
-            }
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={isLoading || isUploading}
-            className='flex-1 text-sm h-9 sm:h-10'
-          />
+        <div className='relative flex flex-col gap-2'>
+          <div className='flex items-center gap-2 p-2 rounded-xl bg-muted/50 border border-muted/30'>
+            <Input
+              placeholder={
+                isSearchMode ? "Search the web..." : "How can I help you today?"
+              }
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (isSearchMode) {
+                    handleSearch();
+                  } else {
+                    sendMessage();
+                  }
+                }
+              }}
+              disabled={isLoading || isUploading || isSearching}
+              className='flex-1 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-base placeholder:text-muted-foreground/70'
+            />
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant='outline'
-                  size='icon'
-                  className='h-9 w-9 sm:h-10 sm:w-10'
-                  disabled={isLoading || isUploading}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Paperclip className='h-4 w-4' />
-                  <input
-                    type='file'
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                    className='hidden'
-                    multiple
-                  />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent
-                side='top'
-                align='end'
-                className='text-xs sm:text-sm'
+            <div className='flex items-center gap-1'>
+              <Button
+                variant='ghost'
+                size='icon'
+                className={cn(
+                  "h-8 w-8 rounded-lg transition-colors",
+                  isSearchMode
+                    ? "bg-purple-500/10 text-purple-500"
+                    : "hover:bg-purple-500/10 hover:text-purple-500"
+                )}
+                onClick={() => setIsSearchMode(!isSearchMode)}
+                disabled={isLoading || isSearching}
               >
-                <p>Attach files</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+                <Search className='h-4 w-4' />
+                <span className='sr-only'>Search mode</span>
+              </Button>
 
-          <Button
-            className={cn(
-              "h-9 w-9 sm:h-10 sm:w-10 p-0",
-              (isLoading || !input.trim()) && "opacity-50"
-            )}
-            disabled={isLoading || !input.trim()}
-            onClick={sendMessage}
-          >
-            <Send className='h-4 w-4 sm:h-5 sm:w-5' />
-          </Button>
+              <div className='h-4 w-px bg-muted-foreground/20' />
+
+              <Button
+                variant='ghost'
+                size='icon'
+                className='h-10 w-10 rounded-lg hover:bg-purple-500/10 hover:text-purple-500 transition-colors relative group'
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading || isUploading}
+              >
+                <div className='relative'>
+                  <FileIcon className='h-5 w-5' />
+                  <div className='absolute -right-1 -bottom-1 bg-purple-500 rounded-full p-0.5 shadow-sm border border-background'>
+                    <Plus className='h-2.5 w-2.5 text-white' />
+                  </div>
+                </div>
+                <span className='sr-only'>Upload files</span>
+                <input
+                  type='file'
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  className='hidden'
+                  multiple
+                />
+              </Button>
+
+              <Button
+                variant='ghost'
+                size='icon'
+                className={cn(
+                  "h-10 w-10 rounded-lg transition-all duration-200",
+                  !input.trim()
+                    ? "opacity-50 cursor-not-allowed"
+                    : "hover:bg-purple-500/10 hover:text-purple-500 hover:scale-110"
+                )}
+                onClick={() => {
+                  if (isSearchMode) {
+                    handleSearch();
+                  } else {
+                    sendMessage();
+                  }
+                }}
+                disabled={isLoading || !input.trim() || isSearching}
+              >
+                {isSearching ? (
+                  <Loader2 className='h-5 w-5 animate-spin' />
+                ) : (
+                  <ArrowUpCircle className='h-5 w-5' />
+                )}
+                <span className='sr-only'>
+                  {isSearchMode ? "Search" : "Send message"}
+                </span>
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
 

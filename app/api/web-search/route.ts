@@ -1,71 +1,104 @@
 import { NextResponse } from 'next/server';
+import { performGoogleSearch } from '@/lib/google-search';
 
 export async function POST(req: Request) {
   try {
+    console.log('Web search request received');
     const { query } = await req.json();
+    console.log('Search query:', query);
 
     if (!query) {
+      console.log('Error: No query provided');
       return NextResponse.json(
         { error: 'Search query is required' },
         { status: 400 }
       );
     }
 
-    // Perform web search using Google's Custom Search API
-    const searchUrl = new URL('https://www.googleapis.com/customsearch/v1');
-    searchUrl.searchParams.append('key', process.env.GOOGLE_SEARCH_API_KEY || '');
-    searchUrl.searchParams.append('cx', process.env.GOOGLE_SEARCH_ENGINE_ID || '');
-    searchUrl.searchParams.append('q', query);
-    searchUrl.searchParams.append('num', '5'); // Get top 5 results
-    searchUrl.searchParams.append('sort', 'date'); // Sort by date for latest results
-    searchUrl.searchParams.append('dateRestrict', 'd1'); // Restrict to last 24 hours
+    // Log environment variables (without exposing sensitive values)
+    console.log('Checking environment variables:');
+    console.log('GOOGLE_SEARCH_API_KEY exists:', !!process.env.GOOGLE_SEARCH_API_KEY);
+    console.log('GOOGLE_SEARCH_ENGINE_ID exists:', !!process.env.GOOGLE_SEARCH_ENGINE_ID);
 
-    const response = await fetch(searchUrl.toString());
-    const data = await response.json();
+    // Create a TransformStream for streaming the response
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+    const encoder = new TextEncoder();
 
-    if (!response.ok) {
-      throw new Error('Search API request failed');
-    }
+    // Start the search process
+    (async () => {
+      try {
+        // Perform web search using our utility function
+        console.log('Calling performGoogleSearch...');
+        const results = await performGoogleSearch(query);
+        console.log('Search results received:', results ? 'Yes' : 'No');
 
-    if (!data.items || data.items.length === 0) {
-      // If no results found with date restriction, try without it
-      searchUrl.searchParams.delete('dateRestrict');
-      const fallbackResponse = await fetch(searchUrl.toString());
-      const fallbackData = await fallbackResponse.json();
-      
-      if (!fallbackResponse.ok || !fallbackData.items) {
-        return NextResponse.json({ results: '' });
+        if (!results || results.length === 0) {
+          console.log('No results found');
+          await writer.write(encoder.encode('data: ' + JSON.stringify({ results: [] }) + '\n\n'));
+          await writer.close();
+          return;
+        }
+
+        // Format the search results
+        console.log('Formatting results...');
+        const formattedResults = results.map((item: any) => ({
+          title: item.title,
+          link: item.link,
+          snippet: item.snippet,
+          date: item.pagemap?.metatags?.[0]?.['article:published_time'] || 
+                item.pagemap?.metatags?.[0]?.['og:updated_time'] ||
+                item.pagemap?.metatags?.[0]?.['date'] ||
+                null,
+        }));
+        console.log('Results formatted successfully');
+
+        // Stream each result with a delay for typing effect
+        for (let i = 0; i < formattedResults.length; i++) {
+          const result = formattedResults[i];
+          await writer.write(encoder.encode('data: ' + JSON.stringify({ 
+            results: [result],
+            isLast: i === formattedResults.length - 1 
+          }) + '\n\n'));
+          // Add a delay between results for typing effect
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
+        await writer.close();
+      } catch (error) {
+        console.error('Error in search stream:', error);
+        await writer.write(encoder.encode('data: ' + JSON.stringify({ 
+          error: 'Failed to perform web search' 
+        }) + '\n\n'));
+        await writer.close();
       }
-      data.items = fallbackData.items;
-    }
+    })();
 
-    // Format the search results
-    const formattedResults = data.items.map((item: any) => ({
-      title: item.title,
-      link: item.link,
-      snippet: item.snippet,
-      date: item.pagemap?.metatags?.[0]?.['article:published_time'] || 
-            item.pagemap?.metatags?.[0]?.['og:updated_time'] ||
-            item.pagemap?.metatags?.[0]?.['date'] ||
-            null,
-    }));
-
-    // Create a natural language summary of the results
-    const summary = `Here's the latest information:
-
-${formattedResults.map((result: any, index: number) => 
-  `${index + 1}. ${result.title}
-     ${result.snippet}
-     Source: ${result.link}
-     ${result.date ? `Last Updated: ${new Date(result.date).toLocaleString()}` : ''}`
-).join('\n\n')}
-
-This information was gathered from web searches and was last updated ${new Date().toLocaleString()}.`;
-
-    return NextResponse.json({ results: summary });
+    // Return the stream response
+    return new Response(stream.readable, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
   } catch (error) {
-    console.error('Web search error:', error);
-    // Return empty results instead of error to handle gracefully in the chat
-    return NextResponse.json({ results: '' });
+    console.error('Web search error details:', {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    return NextResponse.json(
+      { error: 'Failed to perform web search' },
+      { status: 500 }
+    );
   }
+}
+
+// Optionally handle GET requests with an error
+export async function GET() {
+  return NextResponse.json(
+    { error: 'Method not allowed. Please use POST.' },
+    { status: 405 }
+  );
 } 
