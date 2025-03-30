@@ -762,7 +762,7 @@ export function EnhancedChat({
                     <AIBotIcon />
                   )}
                 </div>
-                <div className='flex-1 min-w-0 space-y-1 sm:space-y-2'>
+                <div className='flex-1 min-w-0 space-y-1 sm:space-y-2 overflow-hidden'>
                   <AnimatedMessageContent
                     content={message.content}
                     isStreaming={false}
@@ -774,7 +774,7 @@ export function EnhancedChat({
                         <Badge
                           key={i}
                           variant='outline'
-                          className='flex items-center gap-1 cursor-pointer hover:bg-muted text-xs sm:text-sm py-0.5 px-1.5 sm:px-2'
+                          className='flex items-center gap-1 cursor-pointer hover:bg-muted text-xs sm:text-sm py-0.5 px-1.5 sm:px-2 max-w-full'
                           onClick={() =>
                             handlePreviewFile(
                               attachment.url,
@@ -784,11 +784,11 @@ export function EnhancedChat({
                           }
                         >
                           {getFileIcon(attachment.type, attachment.mimeType)}
-                          <span className='truncate max-w-[100px] sm:max-w-[150px]'>
+                          <span className='truncate max-w-[120px] sm:max-w-[200px]'>
                             {attachment.name}
                           </span>
                           {attachment.size && (
-                            <span className='text-muted-foreground hidden sm:inline'>
+                            <span className='text-muted-foreground hidden sm:inline whitespace-nowrap'>
                               ({formatFileSize(attachment.size)})
                             </span>
                           )}
@@ -818,7 +818,7 @@ export function EnhancedChat({
                 <div className='h-6 w-6 sm:h-8 sm:w-8 rounded-full overflow-hidden flex-shrink-0'>
                   <AIBotIcon />
                 </div>
-                <div className='flex-1 min-w-0 space-y-1 sm:space-y-2'>
+                <div className='flex-1 min-w-0 space-y-1 sm:space-y-2 overflow-hidden'>
                   {streamingContent ? (
                     <div className='relative'>
                       <AnimatedMessageContent
@@ -833,19 +833,6 @@ export function EnhancedChat({
                         <div className='h-4 sm:h-5 w-3/4 bg-primary/25 dark:bg-primary/40 animate-pulse rounded-md'></div>
                         <div className='h-4 sm:h-5 w-full bg-primary/25 dark:bg-primary/40 animate-pulse rounded-md'></div>
                         <div className='h-4 sm:h-5 w-2/3 bg-primary/25 dark:bg-primary/40 animate-pulse rounded-md'></div>
-                      </div>
-                      <div className='space-y-2'>
-                        <div className='h-4 sm:h-5 w-5/6 bg-primary/25 dark:bg-primary/40 animate-pulse rounded-md'></div>
-                        <div className='h-4 sm:h-5 w-4/5 bg-primary/25 dark:bg-primary/40 animate-pulse rounded-md'></div>
-                      </div>
-                      <div className='flex items-center gap-2 mt-2 sm:mt-4'>
-                        <div className='relative h-3 w-3 sm:h-4 sm:w-4'>
-                          <Loader2 className='h-3 w-3 sm:h-4 sm:w-4 animate-spin' />
-                          <div className='absolute inset-0 animate-ping opacity-75 rounded-full bg-primary/50'></div>
-                        </div>
-                        <p className='text-xs sm:text-sm font-medium text-primary/90 animate-pulse'>
-                          Thinking...
-                        </p>
                       </div>
                     </div>
                   )}
@@ -905,33 +892,26 @@ export function EnhancedChat({
         )}
 
         {attachedFiles.length > 0 && (
-          <div className='flex flex-wrap gap-1.5 sm:gap-2 mb-2 sm:mb-4'>
+          <div className='flex flex-wrap gap-1.5 sm:gap-2 mb-2 sm:mb-4 max-h-32 overflow-y-auto'>
             {attachedFiles.map((file, index) => (
               <Badge
                 key={index}
                 variant='outline'
-                className='flex items-center gap-1 text-xs sm:text-sm py-0.5 px-1.5 sm:px-2'
+                className='flex items-center gap-1.5 py-0.5 px-2 pr-1 group/badge'
               >
-                {file.type.startsWith("image/") ? (
-                  <FileText className='h-3 w-3 sm:h-4 sm:w-4 text-blue-500' />
-                ) : file.type === "application/pdf" ? (
-                  <FilePdf className='h-3 w-3 sm:h-4 sm:w-4 text-red-500' />
-                ) : (
-                  <FileText className='h-3 w-3 sm:h-4 sm:w-4 text-gray-500' />
-                )}
-                <span className='truncate max-w-[100px] sm:max-w-[150px]'>
-                  {file.name}
-                </span>
-                <span className='text-muted-foreground hidden sm:inline'>
-                  ({formatFileSize(file.size)})
-                </span>
+                <div className='flex items-center gap-1.5 max-w-[150px] sm:max-w-[200px]'>
+                  {getFileIcon(getFileType(file.type), file.type)}
+                  <span className='truncate text-xs sm:text-sm'>
+                    {file.name}
+                  </span>
+                </div>
                 <Button
                   variant='ghost'
                   size='icon'
-                  className='h-4 w-4 ml-1'
+                  className='h-4 w-4 hover:bg-background ml-1'
                   onClick={() => removeFile(index)}
                 >
-                  <X className='h-2.5 w-2.5 sm:h-3 sm:w-3' />
+                  <X className='h-3 w-3' />
                 </Button>
               </Badge>
             ))}
@@ -972,34 +952,26 @@ export function EnhancedChat({
                   />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>
-                <p className='text-xs sm:text-sm'>Attach files</p>
+              <TooltipContent
+                side='top'
+                align='end'
+                className='text-xs sm:text-sm'
+              >
+                <p>Attach files</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
 
-          {isLoading ? (
-            <Button
-              variant='destructive'
-              size='icon'
-              className='h-9 w-9 sm:h-10 sm:w-10'
-              onClick={cancelRequest}
-            >
-              <Square className='h-4 w-4' />
-            </Button>
-          ) : (
-            <Button
-              variant='default'
-              size='icon'
-              className='h-9 w-9 sm:h-10 sm:w-10'
-              disabled={
-                (!input.trim() && attachedFiles.length === 0) || isUploading
-              }
-              onClick={sendMessage}
-            >
-              <Send className='h-4 w-4' />
-            </Button>
-          )}
+          <Button
+            className={cn(
+              "h-9 w-9 sm:h-10 sm:w-10 p-0",
+              (isLoading || !input.trim()) && "opacity-50"
+            )}
+            disabled={isLoading || !input.trim()}
+            onClick={sendMessage}
+          >
+            <Send className='h-4 w-4 sm:h-5 sm:w-5' />
+          </Button>
         </div>
       </div>
 

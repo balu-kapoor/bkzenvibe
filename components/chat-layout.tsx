@@ -42,6 +42,34 @@ interface ChatState {
   selectedId: string | null;
 }
 
+// Custom Hamburger Menu Icon
+const HamburgerIcon = ({ isOpen }: { isOpen: boolean }) => {
+  return (
+    <div className='relative w-4 h-4'>
+      <span
+        className={cn(
+          "absolute left-0 h-0.5 rounded-full bg-current transition-all duration-300",
+          "top-0 w-full",
+          isOpen && "top-[7px] rotate-45"
+        )}
+      />
+      <span
+        className={cn(
+          "absolute left-0 top-[7px] h-0.5 w-3/4 rounded-full bg-current transition-all duration-300",
+          isOpen && "opacity-0 translate-x-2"
+        )}
+      />
+      <span
+        className={cn(
+          "absolute left-0 h-0.5 rounded-full bg-current transition-all duration-300",
+          "bottom-0 w-1/2",
+          isOpen && "bottom-[7px] w-full -rotate-45"
+        )}
+      />
+    </div>
+  );
+};
+
 export function ChatLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
@@ -305,7 +333,7 @@ export function ChatLayout() {
             className='h-8 w-8 rounded-full hover:bg-purple-500/10 hover:text-purple-500 transition-colors'
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           >
-            <Menu className='h-4 w-4' />
+            <HamburgerIcon isOpen={isSidebarOpen} />
           </Button>
         </div>
 

@@ -6,6 +6,7 @@ import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { cn } from "@/lib/utils";
 import { Check, Copy } from "lucide-react";
 import type { Components } from "react-markdown";
+import type { CSSProperties } from "react";
 
 interface MessageContentProps {
   content: string;
@@ -55,24 +56,24 @@ export function MessageContent({
   return (
     <div
       className={cn(
-        "transition-all duration-200",
+        "transition-all duration-200 w-full",
         isStreaming && !isComplete && "opacity-90"
       )}
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        className='prose prose-sm dark:prose-invert max-w-none'
+        className='prose prose-sm dark:prose-invert max-w-none break-words w-full'
         components={{
-          code: ({ inline, className, children, ...props }) => {
+          code({ className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || "");
             const code = String(children).replace(/\n$/, "");
 
-            if (!inline && match) {
+            if (className && match) {
               return (
-                <div className='relative code-block group'>
+                <div className='relative code-block group not-prose'>
                   <button
                     onClick={() => handleCopy(code)}
-                    className='absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-gray-800/50 hover:bg-gray-800 text-white px-2 py-1 rounded-md text-xs flex items-center gap-1'
+                    className='absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-gray-800/50 hover:bg-gray-800 text-white px-2 py-1 rounded-md text-xs flex items-center gap-1 z-10'
                     aria-label='Copy code to clipboard'
                   >
                     {copiedCode === code ? (
@@ -87,23 +88,39 @@ export function MessageContent({
                       </>
                     )}
                   </button>
-                  <SyntaxHighlighter
-                    style={vscDarkPlus}
-                    language={match[1]}
-                    PreTag='div'
-                    className='!bg-gray-900 !p-4 rounded-lg'
-                    codeTagProps={{ style: { backgroundColor: "transparent" } }}
-                    {...props}
-                  >
-                    {code}
-                  </SyntaxHighlighter>
+                  <div className='rounded-lg border border-gray-800 overflow-hidden'>
+                    <div className='sticky left-0 right-0 top-0 bg-gray-900 px-4 py-2 text-xs text-gray-400 border-b border-gray-800 flex items-center justify-between'>
+                      <span>{match[1]}</span>
+                    </div>
+                    <div className='relative w-full overflow-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent'>
+                      <div style={{ width: "max-content", minWidth: "100%" }}>
+                        <SyntaxHighlighter
+                          style={vscDarkPlus}
+                          language={match[1]}
+                          PreTag='div'
+                          className='!bg-gray-900 !p-4 !m-0 text-[13px] leading-6 sm:text-sm'
+                          showLineNumbers
+                          customStyle={
+                            {
+                              margin: "0",
+                              padding: "1rem",
+                              backgroundColor: "#1a1a1a",
+                            } as { [key: string]: string }
+                          }
+                          {...props}
+                        >
+                          {code}
+                        </SyntaxHighlighter>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               );
             }
             return (
               <code
                 className={cn(
-                  "bg-muted/50 px-1.5 py-0.5 rounded text-sm",
+                  "bg-muted/50 px-1.5 py-0.5 rounded text-sm break-words",
                   className
                 )}
                 {...props}
@@ -113,24 +130,32 @@ export function MessageContent({
             );
           },
           p({ children }) {
-            return <p className='mb-4 last:mb-0 leading-relaxed'>{children}</p>;
+            return (
+              <p className='mb-4 last:mb-0 leading-relaxed text-sm sm:text-base'>
+                {children}
+              </p>
+            );
           },
           ul({ children }) {
             return (
-              <ul className='list-disc pl-4 mb-4 last:mb-0 space-y-1'>
+              <ul className='mb-4 list-disc pl-4 sm:pl-6 space-y-2'>
                 {children}
               </ul>
             );
           },
           ol({ children }) {
             return (
-              <ol className='list-decimal pl-4 mb-4 last:mb-0 space-y-1'>
+              <ol className='mb-4 list-decimal pl-4 sm:pl-6 space-y-2'>
                 {children}
               </ol>
             );
           },
           li({ children }) {
-            return <li className='mb-1 last:mb-0'>{children}</li>;
+            return (
+              <li className='text-sm sm:text-base leading-relaxed'>
+                {children}
+              </li>
+            );
           },
           h1({ children }) {
             return (
@@ -147,7 +172,7 @@ export function MessageContent({
           },
           blockquote({ children }) {
             return (
-              <blockquote className='border-l-4 border-primary/20 pl-4 italic my-4 bg-muted/30 rounded-r-lg py-2'>
+              <blockquote className='border-l-4 border-primary/20 pl-4 italic my-4 bg-muted/30 rounded-r-lg py-2 text-sm sm:text-base'>
                 {children}
               </blockquote>
             );
@@ -170,6 +195,9 @@ export function MessageContent({
           },
           td({ children }) {
             return <td className='px-4 py-2 border-t'>{children}</td>;
+          },
+          pre({ children }) {
+            return <div className='not-prose overflow-hidden'>{children}</div>;
           },
         }}
       >
