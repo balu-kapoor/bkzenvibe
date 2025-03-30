@@ -1,12 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server';
-import axios from 'axios';
+import { generateImage } from "@/lib/image-generation";
+import { env } from "@/env.mjs";
 
 // Add export config for Edge Runtime
 export const runtime = 'edge';
 
 // Initialize API keys
 const HUGGINGFACE_API_KEY = process.env.HUGGINGFACE_API_KEY;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+// Simple in-memory rate limiting
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute in milliseconds
+const requestLog = new Map<string, { count: number; resetTime: number }>();
+
+function checkRateLimit(ip: string, maxRequests: number = parseInt(env.RATE_LIMIT_MAX)) {
+  const now = Date.now();
+  const userRequests = requestLog.get(ip);
+
+  // Clean up expired entries
+  for (const [key, value] of requestLog.entries()) {
+    if (now > value.resetTime) {
+      requestLog.delete(key);
+    }
+  }
+
+  if (!userRequests || now > userRequests.resetTime) {
+    // First request or window expired
+    requestLog.set(ip, {
+      count: 1,
+      resetTime: now + RATE_LIMIT_WINDOW
+    });
+    return {
+      success: true,
+      limit: maxRequests,
+      remaining: maxRequests - 1,
+      reset: Math.floor((now + RATE_LIMIT_WINDOW) / 1000)
+    };
+  }
+
+  if (userRequests.count >= maxRequests) {
+    // Rate limit exceeded
+    return {
+      success: false,
+      limit: maxRequests,
+      remaining: 0,
+      reset: Math.floor(userRequests.resetTime / 1000)
+    };
+  }
+
+  // Increment request count
+  userRequests.count += 1;
+  return {
+    success: true,
+    limit: maxRequests,
+    remaining: maxRequests - userRequests.count,
+    reset: Math.floor(userRequests.resetTime / 1000)
+  };
+}
 
 // Error handling
 class ImageGenerationError extends Error {
@@ -28,65 +77,66 @@ export async function POST(req: NextRequest) {
     }
 
     // Parse request body
-    const { prompt, size = '1024x1024' } = await req.json();
+    const { prompt, negativePrompt } = await req.json();
     
     if (!prompt || typeof prompt !== 'string') {
       throw new ImageGenerationError('A text prompt is required', 400);
     }
-    
-    // Validate size parameter - Hugging Face supports various sizes
-    const validSizes = ['512x512', '768x768', '1024x1024'];
-    if (!validSizes.includes(size)) {
-      throw new ImageGenerationError(`Invalid size parameter. Must be one of: ${validSizes.join(', ')}`, 400);
+
+    // Rate limit by IP
+    const ip = req.headers.get("x-forwarded-for") ?? "127.0.0.1";
+    const { success, limit, reset, remaining } = checkRateLimit(ip);
+
+    if (!success) {
+      return NextResponse.json(
+        {
+          error: "Too many requests",
+          limit,
+          reset,
+          remaining,
+        },
+        {
+          status: 429,
+          headers: {
+            "X-RateLimit-Limit": limit.toString(),
+            "X-RateLimit-Remaining": remaining.toString(),
+            "X-RateLimit-Reset": reset.toString(),
+          },
+        }
+      );
     }
 
     try {
-      // Parse the size dimensions
-      const [width, height] = size.split('x').map(Number);
-      
-      // Call the Hugging Face API for image generation using Stable Diffusion
-      const response = await axios({
-        method: 'post',
-        url: 'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${HUGGINGFACE_API_KEY}`,
-        },
-        data: {
-          inputs: prompt,
-          parameters: {
-            height: height,
-            width: width,
-            num_inference_steps: 30,
-            guidance_scale: 7.5,
-            negative_prompt: 'blurry, bad quality, distorted, disfigured',
-          },
-        },
-        responseType: 'arraybuffer',
+      // Generate image using our optimized SDXL Turbo implementation
+      const imageBlob = await generateImage({ 
+        prompt,
+        negativePrompt,
       });
 
-      // Convert the binary response to base64
-      const buffer = Buffer.from(response.data, 'binary');
+      // Convert blob to base64
+      const arrayBuffer = await imageBlob.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
       const imageData = buffer.toString('base64');
-      const textResponse = 'Image generated successfully';
       
       if (!imageData) {
         throw new ImageGenerationError('No image was generated', 500);
       }
       
-      // Return the image data, any text response, and the size used
+      // Return the image data and rate limit info
       return NextResponse.json({
         success: true,
         imageData,
-        textResponse,
-        size
+        textResponse: 'Image generated successfully',
+        limit,
+        remaining,
+        reset,
       });
       
     } catch (error: any) {
-      console.error('Hugging Face API error:', error);
+      console.error('Image generation error:', error);
       throw new ImageGenerationError(
-        error.response?.data?.error || error.message || 'Failed to generate image',
-        error.response?.status || 500
+        error.message || 'Failed to generate image',
+        500
       );
     }
   } catch (error) {
@@ -104,4 +154,11 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+export async function GET() {
+  return NextResponse.json(
+    { error: "Method not allowed" },
+    { status: 405 }
+  );
 }
