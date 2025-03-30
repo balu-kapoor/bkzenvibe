@@ -14,29 +14,14 @@ const MAX_GEMINI_25_REQUESTS_PER_DAY = 50;
 
 // Model names
 // Using the correct model names for Google Generative AI SDK
-export const GEMINI_25_MODEL = "gemini-2.0-flash";  // Using flash model for better performance
-export const GEMINI_20_MODEL = "gemini-2.0-flash";  // Using flash model for better performance
+export const GEMINI_MODEL = "gemini-2.0-flash";  // Using flash model for better performance
 
 /**
- * Get the appropriate model based on daily usage
- * Uses Gemini Flash for better stability and rate limits
+ * Get the appropriate model
+ * Uses Gemini Flash for better performance and higher limits
  */
-export function getAppropriateModel(ip: string): string {
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  const userRequests = dailyRequestCounts.get(ip);
-  
-  // If no requests today or date changed, reset counter
-  if (!userRequests || userRequests.date !== today) {
-    dailyRequestCounts.set(ip, { count: 1, date: today });
-    return GEMINI_25_MODEL;
-  }
-  
-  // Increment request count
-  userRequests.count++;
-  dailyRequestCounts.set(ip, userRequests);
-  
-  // Use gemini-2.0-flash for all requests for better stability
-  return GEMINI_20_MODEL;
+export function getAppropriateModel(): string {
+  return GEMINI_MODEL;
 }
 
 /**
