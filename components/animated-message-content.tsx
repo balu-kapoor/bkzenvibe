@@ -4,6 +4,8 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { cn } from "@/lib/utils";
 import type { Components } from "react-markdown";
+import { Button } from "./ui/button";
+import { Check, Copy } from "lucide-react";
 
 interface AnimatedMessageContentProps {
   content: string;
@@ -20,6 +22,7 @@ export function AnimatedMessageContent({
   const [isVisible, setIsVisible] = useState(false);
   const contentRef = useRef(content);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [copyStates, setCopyStates] = useState<{ [key: string]: boolean }>({});
 
   useEffect(() => {
     if (!content) return;
@@ -75,10 +78,23 @@ export function AnimatedMessageContent({
     };
   }, [content, isStreaming, typingSpeed, displayedContent]);
 
+  const handleCopy = async (code: string, index: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopyStates((prev) => ({ ...prev, [index]: true }));
+      setTimeout(() => {
+        setCopyStates((prev) => ({ ...prev, [index]: false }));
+      }, 2000);
+    } catch (err) {
+      console.error("Failed to copy code:", err);
+    }
+  };
+
   const components: Components = {
     code: ({ node, className, children, ...props }) => {
       const match = /language-(\w+)/.exec(className || "");
       const isCodeBlock = match && children && typeof children === "string";
+      const codeId = `${children}-${Math.random()}`;
 
       if (!isCodeBlock) {
         return (
@@ -93,15 +109,25 @@ export function AnimatedMessageContent({
 
       return (
         <div className='relative group'>
+          <div className='absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity'>
+            <Button
+              variant='ghost'
+              size='icon'
+              className='h-8 w-8 bg-muted/50 hover:bg-muted'
+              onClick={() =>
+                handleCopy(String(children).replace(/\n$/, ""), codeId)
+              }
+            >
+              {copyStates[codeId] ? (
+                <Check className='h-4 w-4 text-green-500' />
+              ) : (
+                <Copy className='h-4 w-4' />
+              )}
+            </Button>
+          </div>
           <div className='rounded-lg overflow-hidden border border-gray-700'>
             <div className='bg-gray-900 px-4 py-2 text-xs text-gray-400 flex justify-between items-center'>
               <span>{match[1]}</span>
-              <button
-                onClick={() => navigator.clipboard.writeText(String(children))}
-                className='text-xs bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded transition-colors'
-              >
-                Copy
-              </button>
             </div>
             <SyntaxHighlighter
               style={vscDarkPlus}
