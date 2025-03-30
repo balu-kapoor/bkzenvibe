@@ -12,6 +12,7 @@ import {
   FileText,
   File as FilePdf,
   X,
+  Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -83,13 +84,16 @@ export function EnhancedChat({
   initialMessages = [],
   onMessagesChange,
 }: EnhancedChatProps) {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(
+    null
+  );
   const [previewFile, setPreviewFile] = useState<{
     url: string;
     type: string;
@@ -103,11 +107,24 @@ export function EnhancedChat({
   const stuckCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const currentAbortControllerRef = useRef<AbortController | null>(null);
   const [error, setError] = useState("");
+  const isInitialMount = useRef(true);
+
+  // Initialize messages after mount
+  useEffect(() => {
+    setMessages(initialMessages);
+  }, []);
 
   // Update parent component when messages change
   useEffect(() => {
-    onMessagesChange?.(messages);
-  }, [messages, onMessagesChange]);
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+
+    if (onMessagesChange && messages !== initialMessages) {
+      onMessagesChange(messages);
+    }
+  }, [messages, onMessagesChange, initialMessages]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -356,6 +373,23 @@ export function EnhancedChat({
     setPreviewFile(null);
   };
 
+  const handleEditMessage = (index: number) => {
+    const messageToEdit = messages[index];
+    setInput(messageToEdit.content);
+    setEditingMessageIndex(index);
+    // If the message had attachments, restore them
+    if (messageToEdit.attachments) {
+      // We can't restore the actual File objects, but we can show the attachments
+      setAttachedFiles([]);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessageIndex(null);
+    setInput("");
+    setAttachedFiles([]);
+  };
+
   const sendMessage = async () => {
     if (isLoading) return;
 
@@ -368,15 +402,29 @@ export function EnhancedChat({
     // Skip empty messages
     if (!input.trim()) return;
 
-    const userMessage: Message = {
-      role: "user",
-      content: input,
-    };
+    let updatedMessages = [...messages];
 
-    setMessages((prev) => [...prev, userMessage]);
+    if (editingMessageIndex !== null) {
+      // Remove all messages after the edited message
+      updatedMessages = updatedMessages.slice(0, editingMessageIndex + 1);
+      // Update the edited message
+      updatedMessages[editingMessageIndex] = {
+        ...updatedMessages[editingMessageIndex],
+        content: input,
+      };
+      setMessages(updatedMessages);
+      setEditingMessageIndex(null);
+    } else {
+      const userMessage: Message = {
+        role: "user",
+        content: input,
+      };
+      updatedMessages = [...messages, userMessage];
+      setMessages(updatedMessages);
+    }
+
     setInput("");
-
-    await sendMessageToAPI(userMessage);
+    await sendMessageToAPI(updatedMessages[updatedMessages.length - 1]);
   };
 
   const setupStuckStreamCheck = () => {
@@ -646,8 +694,8 @@ export function EnhancedChat({
   };
 
   return (
-    <div className='flex flex-col h-full'>
-      <ScrollArea ref={scrollRef} className='flex-1 p-4'>
+    <div className='flex flex-col min-h-0 h-full relative'>
+      <ScrollArea ref={scrollRef} className='flex-1 px-4 pt-4 overflow-y-auto'>
         {messages.length === 0 ? (
           <div className='flex items-center justify-center h-full'>
             <div className='text-center'>
@@ -663,7 +711,7 @@ export function EnhancedChat({
               <div
                 key={index}
                 className={cn(
-                  "flex items-start gap-3 rounded-lg p-4",
+                  "flex items-start gap-3 rounded-lg p-4 group relative",
                   message.role === "user" ? "bg-muted/90" : "bg-primary/10"
                 )}
               >
@@ -709,6 +757,19 @@ export function EnhancedChat({
                     </div>
                   )}
                 </div>
+                {message.role === "user" && (
+                  <div className='opacity-0 group-hover:opacity-100 transition-opacity absolute right-2 top-2 flex gap-1'>
+                    <Button
+                      variant='ghost'
+                      size='icon'
+                      className='h-8 w-8 hover:bg-background'
+                      onClick={() => handleEditMessage(index)}
+                      disabled={isLoading || editingMessageIndex !== null}
+                    >
+                      <Pencil className='h-4 w-4' />
+                    </Button>
+                  </div>
+                )}
               </div>
             ))}
 
@@ -777,7 +838,7 @@ export function EnhancedChat({
       </ScrollArea>
 
       {isUploading && (
-        <div className='p-4 border-t'>
+        <div className='px-4 py-3 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75 z-10'>
           <div className='flex items-center gap-2 mb-2'>
             <Loader2 className='h-4 w-4 animate-spin' />
             <p className='text-sm'>Processing files...</p>
@@ -786,7 +847,21 @@ export function EnhancedChat({
         </div>
       )}
 
-      <div className='border-t p-4'>
+      <div className='border-t p-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75 sticky bottom-0'>
+        {editingMessageIndex !== null && (
+          <div className='mb-2 flex items-center justify-between bg-yellow-500/10 text-yellow-600 px-3 py-1 rounded-md'>
+            <span className='text-sm font-medium'>Editing message...</span>
+            <Button
+              variant='ghost'
+              size='sm'
+              className='h-7 hover:bg-yellow-500/20'
+              onClick={handleCancelEdit}
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
+
         {attachedFiles.length > 0 && (
           <div className='flex flex-wrap gap-2 mb-4'>
             {attachedFiles.map((file, index) => (
@@ -823,7 +898,11 @@ export function EnhancedChat({
 
         <div className='flex items-center gap-2'>
           <Input
-            placeholder='Ask me anything...'
+            placeholder={
+              editingMessageIndex !== null
+                ? "Edit your message..."
+                : "Ask me anything..."
+            }
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
