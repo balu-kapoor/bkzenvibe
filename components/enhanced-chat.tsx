@@ -177,97 +177,104 @@ export function EnhancedChat({
     if (type === "pdf") return <FilePdf className='h-4 w-4 text-red-500' />;
     if (
       type === "code" ||
-      mimeType?.includes("application/json") ||
-      mimeType?.includes("text/html")
+      (mimeType &&
+        (mimeType.includes("application/json") ||
+          mimeType.includes("text/html")))
     )
       return <FileText className='h-4 w-4 text-green-500' />;
     return <FileText className='h-4 w-4 text-gray-500' />;
   };
 
   const getFileType = (file: File): "image" | "pdf" | "code" | "document" => {
-    if (file.type.startsWith("image/")) return "image";
-    if (file.type === "application/pdf") return "pdf";
+    // Handle case where file type is undefined or empty
+    const mimeType = file.type || "";
+
+    if (mimeType.startsWith("image/")) return "image";
+    if (mimeType === "application/pdf") return "pdf";
+
+    // Get file extension
+    const fileName = file.name || "";
+    const extension = fileName.split(".").pop()?.toLowerCase() || "";
 
     // Expanded list of programming file extensions
     const codeExtensions = [
       // Web development
-      ".js",
-      ".ts",
-      ".jsx",
-      ".tsx",
-      ".html",
-      ".css",
-      ".scss",
-      ".sass",
-      ".less",
+      "js",
+      "ts",
+      "jsx",
+      "tsx",
+      "html",
+      "css",
+      "scss",
+      "sass",
+      "less",
       // Backend
-      ".py",
-      ".rb",
-      ".php",
-      ".java",
-      ".cs",
-      ".go",
-      ".rs",
-      ".c",
-      ".cpp",
-      ".h",
-      ".hpp",
+      "py",
+      "rb",
+      "php",
+      "java",
+      "cs",
+      "go",
+      "rs",
+      "c",
+      "cpp",
+      "h",
+      "hpp",
       // Data/Config
-      ".json",
-      ".xml",
-      ".yaml",
-      ".yml",
-      ".toml",
-      ".ini",
-      ".env",
+      "json",
+      "xml",
+      "yaml",
+      "yml",
+      "toml",
+      "ini",
+      "env",
       // Mobile
-      ".swift",
-      ".kt",
-      ".m",
-      ".mm",
+      "swift",
+      "kt",
+      "m",
+      "mm",
       // Shell/Scripts
-      ".sh",
-      ".bash",
-      ".zsh",
-      ".ps1",
-      ".bat",
-      ".cmd",
+      "sh",
+      "bash",
+      "zsh",
+      "ps1",
+      "bat",
+      "cmd",
       // Other languages
-      ".lua",
-      ".r",
-      ".pl",
-      ".ex",
-      ".exs",
-      ".erl",
-      ".fs",
-      ".fsx",
-      ".dart",
-      ".scala",
+      "lua",
+      "r",
+      "pl",
+      "ex",
+      "exs",
+      "erl",
+      "fs",
+      "fsx",
+      "dart",
+      "scala",
       // Markup/Documentation
-      ".md",
-      ".mdx",
-      ".rst",
-      ".tex",
+      "md",
+      "mdx",
+      "rst",
+      "tex",
       // Database
-      ".sql",
-      ".graphql",
-      ".prisma",
+      "sql",
+      "graphql",
+      "prisma",
     ];
 
     // Check file extension against the list
-    const extension = "." + file.name.split(".").pop()?.toLowerCase();
     if (codeExtensions.includes(extension)) return "code";
 
     // Check MIME type for code-related content
     if (
-      file.type.includes("javascript") ||
-      file.type.includes("typescript") ||
-      file.type.includes("json") ||
-      file.type.includes("html") ||
-      file.type.includes("css") ||
-      file.type.includes("text/x-") || // Many code MIME types start with text/x-
-      file.type.includes("application/x-") ||
-      file.type.includes("text/plain") // Plain text could be code
+      mimeType.includes("javascript") ||
+      mimeType.includes("typescript") ||
+      mimeType.includes("json") ||
+      mimeType.includes("html") ||
+      mimeType.includes("css") ||
+      mimeType.includes("text/x-") || // Many code MIME types start with text/x-
+      mimeType.includes("application/x-") ||
+      mimeType.includes("text/plain") // Plain text could be code
     )
       return "code";
 
@@ -521,7 +528,28 @@ export function EnhancedChat({
     );
   };
 
-  // Update sendMessageToAPI function
+  // Add isRealTimeQuery helper function
+  function isRealTimeQuery(message: string): boolean {
+    const realTimeKeywords = [
+      "current",
+      "latest",
+      "recent",
+      "today",
+      "now",
+      "live",
+      "update",
+      "news",
+      "weather",
+      "price",
+      "stock",
+      "score",
+    ];
+
+    const message_lower = message.toLowerCase();
+    return realTimeKeywords.some((keyword) => message_lower.includes(keyword));
+  }
+
+  // Update the sendMessageToAPI function
   const sendMessageToAPI = async (
     userMessage: Message,
     fileContent: string = ""
@@ -900,7 +928,7 @@ export function EnhancedChat({
                 className='flex items-center gap-1.5 py-0.5 px-2 pr-1 group/badge'
               >
                 <div className='flex items-center gap-1.5 max-w-[150px] sm:max-w-[200px]'>
-                  {getFileIcon(getFileType(file.type), file.type)}
+                  {getFileIcon(getFileType(file), file.type)}
                   <span className='truncate text-xs sm:text-sm'>
                     {file.name}
                   </span>
