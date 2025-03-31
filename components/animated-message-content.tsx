@@ -1,17 +1,157 @@
 import { useEffect, useState, useRef } from "react";
 import ReactMarkdown from "react-markdown";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import remarkGfm from "remark-gfm";
+import * as shiki from "shiki";
 import { cn } from "@/lib/utils";
 import type { Components } from "react-markdown";
 import { Button } from "./ui/button";
 import { Check, Copy } from "lucide-react";
+import { toast } from "@/components/ui/use-toast";
 
 interface AnimatedMessageContentProps {
   content: string;
   isStreaming?: boolean;
   typingSpeed?: number;
 }
+
+let highlighterPromise: Promise<shiki.Highlighter> | null = null;
+
+async function getShikiHighlighter() {
+  if (!highlighterPromise) {
+    highlighterPromise = shiki.createHighlighter({
+      themes: ["github-dark"],
+      langs: [
+        "javascript",
+        "typescript",
+        "jsx",
+        "tsx",
+        "json",
+        "bash",
+        "markdown",
+        "python",
+        "css",
+        "html",
+        "yaml",
+        "sql",
+      ],
+    });
+  }
+  return highlighterPromise;
+}
+
+const components: Components = {
+  pre: ({ children }) => <div className='not-prose my-4'>{children}</div>,
+  code(props) {
+    const { className, children } = props;
+    const match = /language-(\w+)/.exec(className || "");
+    const lang = match ? match[1] : "text";
+
+    if (!className || !match) {
+      return (
+        <code
+          className={cn(
+            "bg-muted/50 px-1.5 py-0.5 rounded-md font-mono text-sm",
+            className
+          )}
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    }
+
+    const code = String(children).replace(/\n$/, "");
+    const [copied, setCopied] = useState(false);
+    const [highlighted, setHighlighted] = useState<string>("");
+
+    useEffect(() => {
+      getShikiHighlighter().then(async (highlighter) => {
+        try {
+          const html = await highlighter.codeToHtml(code, {
+            lang,
+            theme: "github-dark",
+            transformers: [
+              {
+                pre(node) {
+                  node.properties.style =
+                    "background-color: rgb(40, 40, 40); border-radius: 6px; margin: 0;";
+                  return node;
+                },
+                code(node) {
+                  node.properties.style =
+                    "display: grid; padding: 16px; white-space: pre-wrap; word-wrap: break-word;";
+                  return node;
+                },
+                line(node) {
+                  node.properties.style = "line-height: 1.6;";
+                  return node;
+                },
+              },
+            ],
+          });
+          setHighlighted(html);
+        } catch (error) {
+          console.error("Failed to highlight code:", error);
+          setHighlighted(code);
+        }
+      });
+    }, [code, lang]);
+
+    return (
+      <div className='relative group rounded-md overflow-hidden'>
+        <div className='absolute right-4 top-3 z-10'>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(code);
+              setCopied(true);
+              toast({
+                description: "Code copied to clipboard",
+                duration: 2000,
+              });
+              setTimeout(() => setCopied(false), 2000);
+            }}
+            className='flex h-7 items-center gap-1.5 rounded-md bg-black/30 px-3 text-xs text-zinc-400 hover:bg-black/50 hover:text-zinc-100 transition-colors'
+          >
+            {copied ? (
+              <>
+                <Check className='h-3.5 w-3.5' />
+                <span>Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy className='h-3.5 w-3.5' />
+                <span>Copy</span>
+              </>
+            )}
+          </button>
+        </div>
+        <div
+          className='font-mono text-[13px] leading-relaxed bg-[rgb(40,40,40)]'
+          dangerouslySetInnerHTML={{ __html: highlighted || code }}
+        />
+      </div>
+    );
+  },
+  p: ({ children }) => {
+    return <p className='leading-7 [&:not(:first-child)]:mt-4'>{children}</p>;
+  },
+  ul: ({ children }) => {
+    return <ul className='my-4 ml-6 list-disc [&>li]:mt-2'>{children}</ul>;
+  },
+  ol: ({ children }) => {
+    return <ol className='my-4 ml-6 list-decimal [&>li]:mt-2'>{children}</ol>;
+  },
+  li: ({ children }) => {
+    return <li className='marker:text-muted-foreground'>{children}</li>;
+  },
+  blockquote: ({ children }) => {
+    return (
+      <blockquote className='mt-4 border-l-2 pl-4 italic text-muted-foreground'>
+        {children}
+      </blockquote>
+    );
+  },
+};
 
 export function AnimatedMessageContent({
   content,
@@ -23,6 +163,13 @@ export function AnimatedMessageContent({
   const contentRef = useRef(content);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [copyStates, setCopyStates] = useState<{ [key: string]: boolean }>({});
+  const [highlighter, setHighlighter] = useState<shiki.Highlighter | null>(
+    null
+  );
+
+  useEffect(() => {
+    getShikiHighlighter().then(setHighlighter);
+  }, []);
 
   useEffect(() => {
     if (!content) return;
@@ -88,82 +235,6 @@ export function AnimatedMessageContent({
     } catch (err) {
       console.error("Failed to copy code:", err);
     }
-  };
-
-  const components: Components = {
-    code: ({ node, className, children, ...props }) => {
-      const match = /language-(\w+)/.exec(className || "");
-      const isCodeBlock = match && children && typeof children === "string";
-      const codeId = `${children}-${Math.random()}`;
-
-      if (!isCodeBlock) {
-        return (
-          <code
-            className={cn("bg-muted/50 rounded-sm px-1 py-0.5", className)}
-            {...props}
-          >
-            {children}
-          </code>
-        );
-      }
-
-      return (
-        <div className='relative group'>
-          <div className='absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity'>
-            <Button
-              variant='ghost'
-              size='icon'
-              className='h-8 w-8 bg-muted/50 hover:bg-muted'
-              onClick={() =>
-                handleCopy(String(children).replace(/\n$/, ""), codeId)
-              }
-            >
-              {copyStates[codeId] ? (
-                <Check className='h-4 w-4 text-green-500' />
-              ) : (
-                <Copy className='h-4 w-4' />
-              )}
-            </Button>
-          </div>
-          <div className='rounded-lg overflow-hidden border border-gray-700'>
-            <div className='bg-gray-900 px-4 py-2 text-xs text-gray-400 flex justify-between items-center'>
-              <span>{match[1]}</span>
-            </div>
-            <SyntaxHighlighter
-              style={vscDarkPlus}
-              language={match[1]}
-              PreTag='div'
-              customStyle={{
-                margin: 0,
-                background: "#1a1a1a",
-                padding: "1rem",
-              }}
-            >
-              {String(children).replace(/\n$/, "")}
-            </SyntaxHighlighter>
-          </div>
-        </div>
-      );
-    },
-    p: ({ children }) => {
-      return <p className='leading-7 [&:not(:first-child)]:mt-4'>{children}</p>;
-    },
-    ul: ({ children }) => {
-      return <ul className='my-4 ml-6 list-disc [&>li]:mt-2'>{children}</ul>;
-    },
-    ol: ({ children }) => {
-      return <ol className='my-4 ml-6 list-decimal [&>li]:mt-2'>{children}</ol>;
-    },
-    li: ({ children }) => {
-      return <li className='marker:text-muted-foreground'>{children}</li>;
-    },
-    blockquote: ({ children }) => {
-      return (
-        <blockquote className='mt-4 border-l-2 pl-4 italic text-muted-foreground'>
-          {children}
-        </blockquote>
-      );
-    },
   };
 
   return (

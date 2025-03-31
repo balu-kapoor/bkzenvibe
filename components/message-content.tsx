@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type CodeProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import * as shiki from "shiki";
 import { cn } from "@/lib/utils";
 import { Check, Copy } from "lucide-react";
 import type { Components } from "react-markdown";
@@ -14,6 +13,164 @@ interface MessageContentProps {
   isStreaming?: boolean;
 }
 
+// Initialize shiki highlighter
+let highlighterPromise: Promise<shiki.Highlighter> | null = null;
+
+async function getShikiHighlighter() {
+  if (!highlighterPromise) {
+    highlighterPromise = shiki.createHighlighter({
+      themes: ["github-dark"],
+      langs: [
+        "javascript",
+        "typescript",
+        "jsx",
+        "tsx",
+        "json",
+        "bash",
+        "markdown",
+        "python",
+        "css",
+        "html",
+        "yaml",
+        "sql",
+      ],
+    });
+  }
+  return highlighterPromise;
+}
+
+const MarkdownComponents: Components = {
+  p: ({ children }) => (
+    <p className='mb-4 last:mb-0 leading-relaxed text-sm sm:text-base'>
+      {children}
+    </p>
+  ),
+  ul: ({ children }) => (
+    <ul className='mb-4 list-disc pl-4 sm:pl-6 space-y-2'>{children}</ul>
+  ),
+  ol: ({ children }) => (
+    <ol className='mb-4 list-decimal pl-4 sm:pl-6 space-y-2'>{children}</ol>
+  ),
+  li: ({ children }) => (
+    <li className='text-sm sm:text-base leading-relaxed'>{children}</li>
+  ),
+  h1: ({ children }) => (
+    <h1 className='text-2xl font-bold mb-4 bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent'>
+      {children}
+    </h1>
+  ),
+  h2: ({ children }) => <h2 className='text-xl font-bold mb-3'>{children}</h2>,
+  h3: ({ children }) => <h3 className='text-lg font-bold mb-2'>{children}</h3>,
+  blockquote: ({ children }) => (
+    <blockquote className='border-l-4 border-primary/20 pl-4 italic my-4 bg-muted/30 rounded-r-lg py-2 text-sm sm:text-base'>
+      {children}
+    </blockquote>
+  ),
+  table: ({ children }) => (
+    <div className='overflow-x-auto my-4 rounded-lg border border-border'>
+      <table className='min-w-full divide-y divide-border'>{children}</table>
+    </div>
+  ),
+  th: ({ children }) => (
+    <th className='px-4 py-2 text-left font-semibold bg-muted/50'>
+      {children}
+    </th>
+  ),
+  td: ({ children }) => <td className='px-4 py-2 border-t'>{children}</td>,
+  pre: ({ children }) => <div className='not-prose my-4'>{children}</div>,
+  code(props) {
+    const { className, children } = props;
+    const match = /language-(\w+)/.exec(className || "");
+    const lang = match ? match[1] : "text";
+
+    if (!className || !match) {
+      return (
+        <code
+          className={cn(
+            "bg-muted/50 px-1.5 py-0.5 rounded-md font-mono text-sm",
+            className
+          )}
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    }
+
+    const code = String(children).replace(/\n$/, "");
+    const [copied, setCopied] = useState(false);
+    const [highlighted, setHighlighted] = useState<string>("");
+
+    useEffect(() => {
+      getShikiHighlighter().then(async (highlighter) => {
+        try {
+          const html = await highlighter.codeToHtml(code, {
+            lang,
+            theme: "github-dark",
+            transformers: [
+              {
+                pre(node) {
+                  node.properties.style =
+                    "background-color: rgb(40, 40, 40); border-radius: 6px; margin: 0;";
+                  return node;
+                },
+                code(node) {
+                  node.properties.style =
+                    "display: grid; padding: 16px; white-space: pre-wrap; word-wrap: break-word;";
+                  return node;
+                },
+                line(node) {
+                  node.properties.style = "line-height: 1.6;";
+                  return node;
+                },
+              },
+            ],
+          });
+          setHighlighted(html);
+        } catch (error) {
+          console.error("Failed to highlight code:", error);
+          setHighlighted(code);
+        }
+      });
+    }, [code, lang]);
+
+    return (
+      <div className='relative group rounded-md overflow-hidden'>
+        <div className='absolute right-4 top-3 z-10'>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(code);
+              setCopied(true);
+              toast({
+                description: "Code copied to clipboard",
+                duration: 2000,
+              });
+              setTimeout(() => setCopied(false), 2000);
+            }}
+            className='flex h-7 items-center gap-1.5 rounded-md bg-black/30 px-3 text-xs text-zinc-400 hover:bg-black/50 hover:text-zinc-100 transition-colors'
+          >
+            {copied ? (
+              <>
+                <Check className='h-3.5 w-3.5' />
+                <span>Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy className='h-3.5 w-3.5' />
+                <span>Copy</span>
+              </>
+            )}
+          </button>
+        </div>
+        <div
+          className='font-mono text-[13px] leading-relaxed bg-[rgb(40,40,40)]'
+          dangerouslySetInnerHTML={{ __html: highlighted || code }}
+        />
+      </div>
+    );
+  },
+};
+
 export function MessageContent({
   content,
   isStreaming = false,
@@ -21,6 +178,13 @@ export function MessageContent({
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [displayText, setDisplayText] = useState("");
   const [isComplete, setIsComplete] = useState(false);
+  const [highlighter, setHighlighter] = useState<shiki.Highlighter | null>(
+    null
+  );
+
+  useEffect(() => {
+    getShikiHighlighter().then(setHighlighter);
+  }, []);
 
   useEffect(() => {
     if (!isStreaming) {
@@ -32,7 +196,6 @@ export function MessageContent({
     let currentIndex = 0;
     const interval = setInterval(() => {
       if (currentIndex < content.length) {
-        // Add 1-3 characters at a time for more natural effect
         const charsToAdd = Math.min(
           Math.floor(Math.random() * 3) + 1,
           content.length - currentIndex
@@ -43,7 +206,7 @@ export function MessageContent({
         setIsComplete(true);
         clearInterval(interval);
       }
-    }, 20); // Adjust speed as needed
+    }, 20);
 
     return () => clearInterval(interval);
   }, [content, isStreaming]);
@@ -61,167 +224,15 @@ export function MessageContent({
   return (
     <div
       className={cn(
-        "transition-all duration-200 w-full",
+        "transition-all duration-200 w-full overflow-hidden px-4",
         isStreaming && !isComplete && "opacity-90"
       )}
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        className='prose prose-sm dark:prose-invert max-w-none break-words w-full'
+        className='prose prose-sm dark:prose-invert max-w-none break-words'
         components={{
-          pre: ({ children }) => (
-            <div className='relative w-full overflow-hidden rounded-lg bg-gray-800'>
-              <div className='overflow-x-auto'>
-                <pre className='!m-0 !p-4 text-sm'>{children}</pre>
-              </div>
-              <button
-                onClick={() => {
-                  const code = children?.toString() || "";
-                  handleCopy(code);
-                }}
-                className='absolute right-2 top-2 rounded-md bg-gray-700 p-2 text-gray-400 hover:bg-gray-600 hover:text-gray-300'
-              >
-                <Copy className='h-4 w-4' />
-              </button>
-            </div>
-          ),
-          code: ({ className, children, ...props }) => {
-            const match = /language-(\w+)/.exec(className || "");
-            const code = String(children).replace(/\n$/, "");
-
-            if (className && match) {
-              return (
-                <div className='relative code-block group not-prose'>
-                  <button
-                    onClick={() => handleCopy(code)}
-                    className='absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-gray-800/50 hover:bg-gray-800 text-white px-2 py-1 rounded-md text-xs flex items-center gap-1 z-10'
-                    aria-label='Copy code to clipboard'
-                  >
-                    {copiedCode === code ? (
-                      <>
-                        <Check className='h-3.5 w-3.5 flex-shrink-0' />
-                        <span>Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className='h-3.5 w-3.5 flex-shrink-0' />
-                        <span>Copy</span>
-                      </>
-                    )}
-                  </button>
-                  <div className='rounded-lg border border-gray-800 overflow-hidden'>
-                    <div className='sticky left-0 right-0 top-0 bg-gray-900 px-4 py-2 text-xs text-gray-400 border-b border-gray-800 flex items-center justify-between'>
-                      <span>{match[1]}</span>
-                    </div>
-                    <div className='relative w-full overflow-x-auto'>
-                      <div className='min-w-full'>
-                        <SyntaxHighlighter
-                          style={vscDarkPlus}
-                          language={match[1]}
-                          PreTag='div'
-                          className='!bg-gray-900 !p-4 !m-0 text-[13px] leading-6 sm:text-sm'
-                          showLineNumbers
-                          customStyle={
-                            {
-                              margin: "0",
-                              padding: "1rem",
-                              backgroundColor: "#1a1a1a",
-                              width: "100%",
-                              minWidth: "100%",
-                              overflowX: "auto",
-                            } satisfies CSSProperties
-                          }
-                        >
-                          {code}
-                        </SyntaxHighlighter>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-            return (
-              <code
-                className={cn(
-                  "bg-muted/50 px-1.5 py-0.5 rounded text-sm break-words",
-                  className
-                )}
-                {...props}
-              >
-                {children}
-              </code>
-            );
-          },
-          p({ children }) {
-            return (
-              <p className='mb-4 last:mb-0 leading-relaxed text-sm sm:text-base'>
-                {children}
-              </p>
-            );
-          },
-          ul({ children }) {
-            return (
-              <ul className='mb-4 list-disc pl-4 sm:pl-6 space-y-2'>
-                {children}
-              </ul>
-            );
-          },
-          ol({ children }) {
-            return (
-              <ol className='mb-4 list-decimal pl-4 sm:pl-6 space-y-2'>
-                {children}
-              </ol>
-            );
-          },
-          li({ children }) {
-            return (
-              <li className='text-sm sm:text-base leading-relaxed'>
-                {children}
-              </li>
-            );
-          },
-          h1({ children }) {
-            return (
-              <h1 className='text-2xl font-bold mb-4 bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent'>
-                {children}
-              </h1>
-            );
-          },
-          h2({ children }) {
-            return <h2 className='text-xl font-bold mb-3'>{children}</h2>;
-          },
-          h3({ children }) {
-            return <h3 className='text-lg font-bold mb-2'>{children}</h3>;
-          },
-          blockquote({ children }) {
-            return (
-              <blockquote className='border-l-4 border-primary/20 pl-4 italic my-4 bg-muted/30 rounded-r-lg py-2 text-sm sm:text-base'>
-                {children}
-              </blockquote>
-            );
-          },
-          table({ children }) {
-            return (
-              <div className='overflow-x-auto my-4 rounded-lg border border-border'>
-                <table className='min-w-full divide-y divide-border'>
-                  {children}
-                </table>
-              </div>
-            );
-          },
-          th({ children }) {
-            return (
-              <th className='px-4 py-2 text-left font-semibold bg-muted/50'>
-                {children}
-              </th>
-            );
-          },
-          td({ children }) {
-            return <td className='px-4 py-2 border-t'>{children}</td>;
-          },
-          pre({ children }) {
-            return <div className='not-prose overflow-hidden'>{children}</div>;
-          },
+          ...MarkdownComponents,
         }}
       >
         {displayText}
