@@ -30,6 +30,62 @@ export async function processImageWithGemini(
   apiKey?: string
 ): Promise<string> {
   try {
+    // Enhanced prompt for code generation with best practices
+    const enhancedPrompt = prompt.includes('code') ? 
+      `${prompt}
+
+      You MUST follow these EXACT rules when generating PHP code:
+
+      1. CRITICAL PHP CODE FORMATTING RULES:
+         - NEVER use HTML comments (<!--) or any HTML tags in PHP code
+         - ALWAYS format PHP code blocks exactly like this:
+           \`\`\`php
+           <?php
+           declare(strict_types=1);
+           
+           // Your code here
+           \`\`\`
+         - ALWAYS use full <?php tag, NEVER use <? or <!--?php
+         - ALWAYS add proper spacing and indentation
+         - ALWAYS use proper PHP syntax highlighting markers
+
+      2. Required PHP Code Structure:
+         - Start with <?php on its own line
+         - Add declare(strict_types=1); after the PHP tag
+         - Use proper namespaces if applicable
+         - Separate logical blocks with blank lines
+         - Use PSR-12 coding standards
+
+      3. Security and Best Practices:
+         - Use prepared statements for all SQL queries
+         - Validate and sanitize all inputs
+         - Use proper error handling with try/catch
+         - Add logging for errors and important events
+         - Use environment variables for sensitive data
+
+      Here's the EXACT format to follow:
+
+      \`\`\`php
+      <?php
+      declare(strict_types=1);
+
+      // Database connection with error handling
+      try {
+          $pdo = new PDO(
+              "mysql:host={$host};dbname={$database};charset=utf8mb4",
+              $username,
+              $password,
+              [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+          );
+      } catch (PDOException $e) {
+          error_log("Database connection failed: " . $e->getMessage());
+          throw new RuntimeException("Database connection failed");
+      }
+      \`\`\`
+
+      Remember: NEVER use HTML comments or mix HTML with PHP code.
+      ` : prompt;
+
     // Use provided API key or fall back to environment variable
     const key = apiKey || GEMINI_API_KEY;
     if (!key) {
@@ -45,7 +101,7 @@ export async function processImageWithGemini(
 
     // Generate content with the image
     const result = await model.generateContent([
-      { text: prompt },
+      { text: enhancedPrompt },
       {
         inlineData: {
           mimeType: mimeType,
@@ -54,8 +110,21 @@ export async function processImageWithGemini(
       }
     ]);
 
-    const response = result.response;
-    const text = response.text();
+    let text = result.response.text();
+
+    // Post-process the response to fix any remaining PHP formatting issues
+    if (prompt.includes('code') && text.includes('php')) {
+      text = text
+        // Fix any HTML comments that might have slipped through
+        .replace(/<!--\?php/g, '<?php')
+        .replace(/<!--/g, '')
+        .replace(/-->/g, '')
+        // Ensure proper PHP tags
+        .replace(/<\?(?!php)/g, '<?php')
+        // Fix code block formatting
+        .replace(/```(\s*)(php)?\s*(?!<\?php)/, '```php\n<?php\ndeclare(strict_types=1);\n\n');
+    }
+
     return text;
   } catch (error) {
     console.error('Error processing image with Gemini:', error);

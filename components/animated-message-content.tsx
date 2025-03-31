@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import * as shiki from "shiki";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { cn } from "@/lib/utils";
 import type { Components } from "react-markdown";
 import { Button } from "./ui/button";
@@ -14,37 +15,33 @@ interface AnimatedMessageContentProps {
   typingSpeed?: number;
 }
 
-let highlighterPromise: Promise<shiki.Highlighter> | null = null;
-
-async function getShikiHighlighter() {
-  if (!highlighterPromise) {
-    highlighterPromise = shiki.createHighlighter({
-      themes: ["github-dark"],
-      langs: [
-        "javascript",
-        "typescript",
-        "jsx",
-        "tsx",
-        "json",
-        "bash",
-        "markdown",
-        "python",
-        "css",
-        "html",
-        "yaml",
-        "sql",
-      ],
-    });
-  }
-  return highlighterPromise;
-}
-
 const components: Components = {
   pre: ({ children }) => <div className='not-prose my-4'>{children}</div>,
   code(props) {
     const { className, children } = props;
     const match = /language-(\w+)/.exec(className || "");
-    const lang = match ? match[1] : "text";
+    let lang = match ? match[1].toLowerCase() : "text";
+
+    // Detect PHP code by checking for <?php
+    const code = String(children).replace(/\n$/, "");
+    if (code.includes("<?php") || code.includes("<?=")) {
+      lang = "php";
+    }
+
+    // Map common language aliases
+    const languageMap: { [key: string]: string } = {
+      js: "javascript",
+      ts: "typescript",
+      py: "python",
+      rb: "ruby",
+      md: "markdown",
+      sh: "bash",
+      yml: "yaml",
+      tex: "latex",
+    };
+
+    // Use mapped language if available
+    lang = languageMap[lang] || lang;
 
     if (!className || !match) {
       return (
@@ -60,45 +57,10 @@ const components: Components = {
       );
     }
 
-    const code = String(children).replace(/\n$/, "");
     const [copied, setCopied] = useState(false);
-    const [highlighted, setHighlighted] = useState<string>("");
-
-    useEffect(() => {
-      getShikiHighlighter().then(async (highlighter) => {
-        try {
-          const html = await highlighter.codeToHtml(code, {
-            lang,
-            theme: "github-dark",
-            transformers: [
-              {
-                pre(node) {
-                  node.properties.style =
-                    "background-color: rgb(40, 40, 40); border-radius: 6px; margin: 0;";
-                  return node;
-                },
-                code(node) {
-                  node.properties.style =
-                    "display: grid; padding: 16px; white-space: pre-wrap; word-wrap: break-word;";
-                  return node;
-                },
-                line(node) {
-                  node.properties.style = "line-height: 1.6;";
-                  return node;
-                },
-              },
-            ],
-          });
-          setHighlighted(html);
-        } catch (error) {
-          console.error("Failed to highlight code:", error);
-          setHighlighted(code);
-        }
-      });
-    }, [code, lang]);
 
     return (
-      <div className='relative group rounded-md overflow-hidden'>
+      <div className='relative group rounded-md overflow-hidden max-w-full'>
         <div className='absolute right-4 top-3 z-10'>
           <button
             onClick={() => {
@@ -125,10 +87,27 @@ const components: Components = {
             )}
           </button>
         </div>
-        <div
-          className='font-mono text-[13px] leading-relaxed bg-[rgb(40,40,40)]'
-          dangerouslySetInnerHTML={{ __html: highlighted || code }}
-        />
+        <div className='max-w-full overflow-x-auto'>
+          <SyntaxHighlighter
+            language={lang}
+            style={oneDark}
+            customStyle={{
+              margin: 0,
+              padding: "1rem",
+              background: "rgb(40, 40, 40)",
+              fontSize: "13px",
+              lineHeight: "1.6",
+              width: "100%",
+              minWidth: "100%",
+            }}
+            wrapLines={true}
+            wrapLongLines={true}
+            showLineNumbers={true}
+            className='syntax-highlighter'
+          >
+            {code}
+          </SyntaxHighlighter>
+        </div>
       </div>
     );
   },
@@ -163,13 +142,6 @@ export function AnimatedMessageContent({
   const contentRef = useRef(content);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [copyStates, setCopyStates] = useState<{ [key: string]: boolean }>({});
-  const [highlighter, setHighlighter] = useState<shiki.Highlighter | null>(
-    null
-  );
-
-  useEffect(() => {
-    getShikiHighlighter().then(setHighlighter);
-  }, []);
 
   useEffect(() => {
     if (!content) return;

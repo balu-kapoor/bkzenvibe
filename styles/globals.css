@@ -129,4 +129,27 @@ body {
   .code-block:hover .copy-button {
     opacity: 1;
   }
+
+  /* Syntax highlighter styles */
+  .syntax-highlighter {
+    max-width: 100% !important;
+  }
+
+  .syntax-highlighter pre {
+    white-space: pre-wrap !important;
+    word-wrap: break-word !important;
+    word-break: break-all !important;
+  }
+
+  .syntax-highlighter code {
+    white-space: pre-wrap !important;
+    word-wrap: break-word !important;
+    word-break: break-all !important;
+  }
+
+  .syntax-highlighter span {
+    word-break: break-all !important;
+    white-space: pre-wrap !important;
+    overflow-wrap: break-word !important;
+  }
 }
