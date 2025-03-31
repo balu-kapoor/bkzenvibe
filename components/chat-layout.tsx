@@ -11,6 +11,8 @@ import {
   Settings,
   Info,
   ImageIcon,
+  Plus,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EnhancedChat } from "./enhanced-chat";
@@ -191,10 +193,22 @@ export function ChatLayout() {
 
   return (
     <div className='flex h-screen overflow-hidden'>
+      {/* Theme toggle button - absolute positioned */}
+      <div className='absolute top-4 right-4 z-50'>
+        <Button
+          variant='ghost'
+          size='icon'
+          className='h-8 w-8 rounded-full hover:bg-purple-500/10 hover:text-purple-500 transition-colors'
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+        >
+          <HamburgerIcon isOpen={isSidebarOpen} />
+        </Button>
+      </div>
+
       {/* Sidebar */}
       <div
         className={cn(
-          "fixed md:relative bg-background/50 border-r border-r-muted/20 flex flex-col backdrop-blur-xl transition-all duration-300 overflow-hidden z-50 h-full",
+          "fixed md:relative bg-background/50 border-r border-r-muted/20 flex flex-col backdrop-blur-xl transition-all duration-300 overflow-hidden z-40 h-full",
           isSidebarOpen ? "w-64" : "w-0 border-r-0"
         )}
       >
@@ -216,26 +230,14 @@ export function ChatLayout() {
           {/* Top gradient overlay */}
           <div className='absolute inset-0 bg-gradient-to-b from-purple-500/5 via-transparent to-purple-500/10 pointer-events-none' />
 
-          {/* Close button for mobile */}
-          <div className='md:hidden absolute right-2 top-2 z-50'>
-            <Button
-              variant='ghost'
-              size='icon'
-              className='h-8 w-8 rounded-full hover:bg-purple-500/10 hover:text-purple-500'
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <X className='h-4 w-4' />
-            </Button>
-          </div>
-
           {/* Fixed top section */}
-          <div className='p-4 pt-14 md:pt-4 flex flex-col gap-4 relative z-10'>
+          <div className='p-4 flex flex-col gap-4 relative z-10'>
             <Button
               onClick={createNewChat}
               className='w-full flex items-center gap-2 bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 hover:from-purple-600 hover:via-blue-600 hover:to-purple-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] group relative overflow-hidden'
             >
               <div className='absolute inset-0 bg-gradient-to-r from-white/10 via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300' />
-              <PlusCircle className='w-4 h-4 relative z-10' />
+              <Plus className='w-4 h-4 relative z-10' />
               <span className='relative z-10'>New Chat</span>
             </Button>
 
@@ -246,7 +248,7 @@ export function ChatLayout() {
               <div className='absolute inset-0 bg-gradient-to-r from-orange-500/10 via-yellow-500/10 to-orange-500/10 opacity-50' />
               <div className='absolute inset-0 bg-gradient-to-br from-orange-500/20 via-transparent to-transparent' />
               <div className='flex gap-3 items-start relative z-10'>
-                <Info className='h-5 w-5 text-orange-400 mt-0.5 flex-shrink-0' />
+                <AlertTriangle className='h-5 w-5 text-orange-400 mt-0.5 flex-shrink-0' />
                 <AlertDescription className='text-sm font-medium text-orange-500/90'>
                   Currently using local storage for chats. Messages are
                   temporary and stored only in your browser.
@@ -257,7 +259,7 @@ export function ChatLayout() {
 
           {/* Scrollable chat list */}
           <div className='flex-1 min-h-0 overflow-y-auto'>
-            <div className='px-4 py-2'>
+            <div className='p-4'>
               <div className='flex flex-col gap-2'>
                 {chatState.sessions.map((session) => (
                   <div key={session.id}>
@@ -301,21 +303,38 @@ export function ChatLayout() {
           </div>
 
           {/* Fixed bottom section */}
-          <div className='p-4 border-t border-t-muted/20 bg-gradient-to-b from-transparent via-purple-500/5 to-purple-500/10'>
-            <Link href='/image-generator' className='w-full block mb-4'>
-              <Button
-                variant='ghost'
-                className='w-full flex items-center gap-3 hover:bg-purple-500/10 transition-all duration-300 group relative overflow-hidden px-3 py-2'
-              >
-                <div className='rounded-full bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 p-1.5 relative'>
-                  <Sparkles className='w-4 h-4 text-white' />
-                </div>
-                <span className='text-sm font-medium'>AI Image Generator</span>
-              </Button>
-            </Link>
-            <div className='flex flex-col items-center gap-2'>
+          <div className='p-4 border-t border-t-muted/20'>
+            <div className='flex flex-col gap-2'>
+              <Link href='/build' className='w-full block'>
+                <Button
+                  variant='ghost'
+                  className='w-full flex items-center gap-3 hover:bg-purple-500/10 transition-all duration-300 group relative overflow-hidden pl-2 pr-3 py-2 justify-start'
+                >
+                  <div className='rounded-full bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 p-2'>
+                    <Settings className='w-4 h-4 text-white' />
+                  </div>
+                  <span className='text-sm font-medium text-muted-foreground'>
+                    Build with AI
+                  </span>
+                </Button>
+              </Link>
+              <Link href='/image-generator' className='w-full block'>
+                <Button
+                  variant='ghost'
+                  className='w-full flex items-center gap-3 hover:bg-purple-500/10 transition-all duration-300 group relative overflow-hidden pl-2 pr-3 py-2 justify-start'
+                >
+                  <div className='rounded-full bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 p-2'>
+                    <Sparkles className='w-4 h-4 text-white' />
+                  </div>
+                  <span className='text-sm font-medium text-muted-foreground'>
+                    AI Image Generator
+                  </span>
+                </Button>
+              </Link>
+            </div>
+            <div className='flex flex-col items-center gap-2 mt-4'>
               <div className='h-px w-12 bg-gradient-to-r from-transparent via-purple-500/30 to-transparent' />
-              <div className='text-xs text-center font-medium bg-gradient-to-r from-purple-500 to-blue-500 bg-clip-text text-transparent'>
+              <div className='text-xs text-center font-medium text-muted-foreground'>
                 BK Zen Vibe Model
               </div>
             </div>
@@ -324,19 +343,7 @@ export function ChatLayout() {
       </div>
 
       {/* Main chat area */}
-      <div className='flex-1 flex flex-col bg-gradient-to-b from-background via-background/95 to-background/90 min-w-0'>
-        {/* Header with toggle button */}
-        <div className='h-12 sm:h-14 flex items-center px-2 sm:px-4'>
-          <Button
-            variant='ghost'
-            size='icon'
-            className='h-8 w-8 rounded-full hover:bg-purple-500/10 hover:text-purple-500 transition-colors'
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          >
-            <HamburgerIcon isOpen={isSidebarOpen} />
-          </Button>
-        </div>
-
+      <div className='flex-1 flex flex-col min-w-0'>
         {/* Chat content */}
         <div className='flex-1 overflow-hidden relative'>
           {chatState.selectedId ? (

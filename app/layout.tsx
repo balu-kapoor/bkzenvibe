@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import "@/styles/globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
+import Script from "next/script";
+
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "BK Zen Vibe",
-  description: "Created with v0",
-  generator: "v0.dev",
+  description: "Your AI-powered creative companion",
 };
 
 export default function RootLayout({
@@ -16,15 +19,19 @@ export default function RootLayout({
 }>) {
   return (
     <html lang='en' suppressHydrationWarning>
-      <body>
+      <head>
+        <Script src='https://js.puter.com/v2/' strategy='beforeInteractive' />
+      </head>
+      <body className={inter.className}>
         <ThemeProvider
           attribute='class'
-          defaultTheme='light'
-          enableSystem={false}
+          defaultTheme='system'
+          enableSystem
+          disableTransitionOnChange
         >
-          {children}
+          <div className='min-h-screen flex flex-col'>{children}</div>
+          <Toaster />
         </ThemeProvider>
-        <Toaster />
       </body>
     </html>
   );
