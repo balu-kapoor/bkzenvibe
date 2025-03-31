@@ -5,9 +5,9 @@ const hf = new HfInference(env.HUGGINGFACE_API_KEY);
 
 // Available models in order of preference
 const MODELS = [
-  "runwayml/stable-diffusion-v1-5",  // More reliable, widely accessible
-  "stabilityai/stable-diffusion-2-1", // Original model as fallback
-  "CompVis/stable-diffusion-v1-4"     // Most permissive model as last resort
+  "stabilityai/stable-diffusion-xl-base-1.0",  // Fast and reliable
+  "stabilityai/stable-diffusion-2-1",         // Good quality fallback
+  "runwayml/stable-diffusion-v1-5"            // Most permissive model as last resort
 ];
 
 export interface GenerateImageParams {
@@ -65,8 +65,10 @@ async function generateImageWithRetry(
     });
 
     const response = await hf.textToImage(params);
-    if (!response) {
-      throw new Error('No response received from image generation API');
+    
+    // Validate response
+    if (!response || !(response instanceof Blob)) {
+      throw new Error('Invalid response format from image generation API');
     }
 
     // Log successful response
@@ -93,6 +95,14 @@ async function generateImageWithRetry(
         stack: error.stack
       }
     });
+
+    // Handle JSON parsing errors specifically
+    if (error.message.includes('Unexpected token') || error.message.includes('not valid JSON')) {
+      console.error('JSON parsing error detected, retrying with next model');
+      if (modelIndex < MODELS.length - 1) {
+        return generateImageWithRetry(params, 0, modelIndex + 1);
+      }
+    }
 
     // Try next model if available
     if ((error.status === 401 || error.status === 403 || error.status === 404) && modelIndex < MODELS.length - 1) {
@@ -134,7 +144,7 @@ async function generateImageWithRetry(
 export async function generateImage({
   prompt,
   negativePrompt = "ugly, blurry, bad quality, distorted, disfigured",
-  numInferenceSteps = 30,
+  numInferenceSteps = 25, // Reduced for faster generation
   seed = Math.floor(Math.random() * 2147483647),
 }: GenerateImageParams): Promise<Blob> {
   try {
@@ -160,6 +170,8 @@ export async function generateImage({
         num_inference_steps: numInferenceSteps,
         seed: seed,
         guidance_scale: 7.5,
+        width: 1024,
+        height: 1024,
       }
     });
 
