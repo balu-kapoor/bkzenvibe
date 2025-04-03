@@ -1,5 +1,18 @@
 "use client";
 
+// Add type declaration for window with StackBlitzSDK
+declare global {
+  interface Window {
+    StackBlitzSDK: any;
+    loadStackBlitzSDK?: () => Promise<any>;
+  }
+}
+
+// Add explicit import for the StackBlitz SDK
+import stackblitzSdk from "@stackblitz/sdk";
+// Import the ProjectFiles type from the SDK
+import type { ProjectFiles } from "@stackblitz/sdk";
+
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -305,6 +318,142 @@ export function WebAppBuilder() {
     // Check if this is the initial creation or a subsequent modification
     const isInitialCreation = fileSystem.files.length === 0;
 
+    // Helper function to detect the most likely app category from the prompt
+    const detectAppCategory = (promptText: string) => {
+      const promptLower = promptText.toLowerCase();
+
+      // Define category patterns with keywords
+      const categories = {
+        "E-COMMERCE": [
+          "shop",
+          "store",
+          "buy",
+          "sell",
+          "product",
+          "purchase",
+          "cart",
+          "checkout",
+          "payment",
+          "order",
+          "shipping",
+          "ecommerce",
+        ],
+        HEALTH_FITNESS: [
+          "health",
+          "fitness",
+          "workout",
+          "exercise",
+          "yoga",
+          "nutrition",
+          "diet",
+          "wellness",
+          "meditation",
+          "gym",
+          "training",
+        ],
+        TRAVEL: [
+          "travel",
+          "trip",
+          "hotel",
+          "vacation",
+          "booking",
+          "destination",
+          "flight",
+          "accommodation",
+          "tour",
+          "explore",
+        ],
+        FOOD_RESTAURANT: [
+          "food",
+          "restaurant",
+          "menu",
+          "dish",
+          "dinner",
+          "cafe",
+          "recipe",
+          "cuisine",
+          "cooking",
+          "chef",
+          "meal",
+          "bakery",
+        ],
+        TECH_SAAS: [
+          "dashboard",
+          "analytics",
+          "saas",
+          "business",
+          "software",
+          "management",
+          "admin",
+          "data",
+          "app",
+          "platform",
+          "system",
+          "service",
+        ],
+        REAL_ESTATE: [
+          "real estate",
+          "property",
+          "house",
+          "apartment",
+          "rent",
+          "home",
+          "listing",
+          "mortgage",
+          "agent",
+          "building",
+        ],
+        EDUCATION: [
+          "learn",
+          "course",
+          "education",
+          "school",
+          "student",
+          "teaching",
+          "tutor",
+          "academy",
+          "lesson",
+          "class",
+          "university",
+        ],
+        CREATIVE_AGENCY: [
+          "portfolio",
+          "creative",
+          "design",
+          "agency",
+          "art",
+          "showcase",
+          "designer",
+          "artist",
+          "gallery",
+          "studio",
+          "project",
+        ],
+      };
+
+      // Count keyword matches for each category
+      const categoryScores = Object.entries(categories).map(
+        ([category, keywords]) => {
+          const matchCount = keywords.filter((keyword) =>
+            promptLower.includes(keyword)
+          ).length;
+          return { category, matchCount };
+        }
+      );
+
+      // Sort categories by match count in descending order
+      categoryScores.sort((a, b) => b.matchCount - a.matchCount);
+
+      // Return the highest matching category, or TECH_SAAS as default
+      return categoryScores[0].matchCount > 0
+        ? categoryScores[0].category
+        : "TECH_SAAS";
+    };
+
+    // Detect the app category from the prompt
+    const detectedCategory = detectAppCategory(currentPrompt);
+    console.log(`Detected app category: ${detectedCategory}`);
+
     // Generate placeholder file list based on the prompt content
     const generateDynamicFiles = () => {
       const words = currentPrompt.toLowerCase().split(/\s+/);
@@ -518,6 +667,17 @@ export function WebAppBuilder() {
               .join("\n")
           );
 
+      // Add information about the detected app category
+      enhancedPrompt += `\n\nDETECTED APP CATEGORY: ${detectedCategory}
+IMPORTANT: I've detected that you're creating a ${detectedCategory.replace(
+        "_",
+        "/"
+      )} application. 
+Please prioritize using images from the ${detectedCategory.replace(
+        "_",
+        "/"
+      )} category in the asset instructions below.`;
+
       // Add specific instructions for code organization
       enhancedPrompt += `\n\nIMPORTANT INSTRUCTIONS FOR CODE STRUCTURE:
 1. Create a modular, well-organized codebase. DO NOT put all code in a single App.tsx file.
@@ -540,17 +700,80 @@ export function WebAppBuilder() {
       // Add specific instructions about not using local assets
       enhancedPrompt += `\n\nCRITICAL INSTRUCTION ABOUT ASSETS:
 1. NEVER use or reference local image files or assets (e.g., "../assets/image.png", "./images/logo.svg", "./reportWebVitals")
-2. For images, ONLY use these specific working Unsplash URLs:
-   - https://images.unsplash.com/photo-1682687982501-1e58ab814714?auto=format&fit=crop&w=1600&q=80
-   - https://images.unsplash.com/photo-1680700536058-a435fe18be6e?auto=format&fit=crop&w=1600&q=80
-   - https://images.unsplash.com/photo-1682686581295-7136dd801d70?auto=format&fit=crop&w=1600&q=80
-   - https://images.unsplash.com/photo-1673187236927-a8ef13486aff?auto=format&fit=crop&w=1600&q=80
+2. For images, use ONLY the following Unsplash URLs based on the type of app you're building:
+
+   E-COMMERCE / PRODUCT SITES:
+   - https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1600&q=80 (product)
+   - https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=1600&q=80 (camera)
+   - https://images.unsplash.com/photo-1572635196237-14b3f281503f?auto=format&fit=crop&w=1600&q=80 (sunglasses)
+   - https://images.unsplash.com/photo-1581318694548-0fb6e47fe59b?auto=format&fit=crop&w=1600&q=80 (clothing)
+   
+   HEALTH / FITNESS / WELLNESS:
+   - https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=1600&q=80 (fitness)
+   - https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&w=1600&q=80 (meditation)
+   - https://images.unsplash.com/photo-1511690656952-34342bb7c2f2?auto=format&fit=crop&w=1600&q=80 (food)
+   - https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&w=1600&q=80 (wellness)
+   
+   TRAVEL / HOTELS / EXPERIENCES:
+   - https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1600&q=80 (beach)
+   - https://images.unsplash.com/photo-1534430480872-3498386e7856?auto=format&fit=crop&w=1600&q=80 (city)
+   - https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=1600&q=80 (hotel)
+   - https://images.unsplash.com/photo-1528127269322-539801943592?auto=format&fit=crop&w=1600&q=80 (mountain)
+   
+   FOOD / RESTAURANT:
+   - https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&w=1600&q=80 (food plate)
+   - https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1600&q=80 (restaurant)
+   - https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=1600&q=80 (pizza)
+   - https://images.unsplash.com/photo-1482049016688-2d3e1b311543?auto=format&fit=crop&w=1600&q=80 (coffee)
+   
+   TECH / SaaS / DASHBOARDS:
+   - https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=1600&q=80 (coding)
+   - https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1600&q=80 (devices)
+   - https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&w=1600&q=80 (meeting)
+   - https://images.unsplash.com/photo-1559028012-481c04fa702d?auto=format&fit=crop&w=1600&q=80 (data)
+   
+   REAL ESTATE / ARCHITECTURE:
+   - https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=1600&q=80 (house)
+   - https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1600&q=80 (luxury home)
+   - https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1600&q=80 (building)
+   - https://images.unsplash.com/photo-1503174971373-b1f69a8400cd?auto=format&fit=crop&w=1600&q=80 (apartment)
+   
+   EDUCATION / LEARNING:
+   - https://images.unsplash.com/photo-1523050854058-8df90110c9f1?auto=format&fit=crop&w=1600&q=80 (study)
+   - https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&w=1600&q=80 (students)
+   - https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=1600&q=80 (library)
+   - https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=1600&q=80 (classroom)
+   
+   CREATIVE / AGENCY / PORTFOLIO:
+   - https://images.unsplash.com/photo-1535350356005-fd52b3b524fb?auto=format&fit=crop&w=1600&q=80 (design)
+   - https://images.unsplash.com/photo-1542744095-fcf48d80b0fd?auto=format&fit=crop&w=1600&q=80 (art)
+   - https://images.unsplash.com/photo-1562932831-afcfe48b5786?auto=format&fit=crop&w=1600&q=80 (creative work)
+   - https://images.unsplash.com/photo-1581291518633-83b4ebd1d83e?auto=format&fit=crop&w=1600&q=80 (portfolio)
+
 3. For icons, use ONLY:
    - Lucide React icons (import { Icon } from "lucide-react")
    - React Icons (import { IconName } from "react-icons/xx")
    - Heroicons (import { IconName } from "@heroicons/react/24/outline")
 4. Any references to static files will cause build errors
-5. Format image URLs properly as string literals in your JSX, not as import statements`;
+5. Format image URLs properly as string literals in your JSX, not as import statements
+6. IMPORTANT: Select images that match the style and theme of the app being created. For example, use food images for restaurant apps and tech images for SaaS apps.
+
+7. HOW TO CHOOSE THE RIGHT IMAGES:
+   a) First, analyze the user's prompt to determine the app category:
+      - For prompts mentioning 'shop', 'store', 'buy', 'sell', 'product', 'purchase', 'cart' → Use E-COMMERCE images
+      - For prompts mentioning 'health', 'fitness', 'workout', 'exercise', 'yoga', 'nutrition' → Use HEALTH/FITNESS images
+      - For prompts mentioning 'travel', 'trip', 'hotel', 'vacation', 'booking', 'destination' → Use TRAVEL images
+      - For prompts mentioning 'food', 'restaurant', 'menu', 'dish', 'dinner', 'cafe' → Use FOOD/RESTAURANT images
+      - For prompts mentioning 'dashboard', 'analytics', 'SaaS', 'business', 'software', 'management', 'admin' → Use TECH/SaaS images
+      - For prompts mentioning 'real estate', 'property', 'house', 'apartment', 'rent', 'home' → Use REAL ESTATE images
+      - For prompts mentioning 'learn', 'course', 'education', 'school', 'student', 'teaching' → Use EDUCATION images
+      - For prompts mentioning 'portfolio', 'creative', 'design', 'agency', 'art', 'showcase' → Use CREATIVE/AGENCY images
+   
+   b) Always select at least 2-3 different images from the appropriate category to provide visual variety in your app
+   
+   c) If the app spans multiple categories, prioritize the main category but you can include one image from a secondary category
+
+   d) If no category clearly matches, default to using professional images from the TECH/SaaS category`;
 
       // Add strict instructions about including all necessary imports and dependencies
       enhancedPrompt += `\n\nSTRICT DEPENDENCY AND IMPORT REQUIREMENTS:
@@ -590,6 +813,33 @@ export default reportWebVitals;
 4. In index.tsx or index.js, always wrap <App /> in <React.StrictMode> tags
 5. If you use Context API, create a complete context implementation with Provider and proper exports
 6. Add web-vitals dependency in package.json if reportWebVitals is used`;
+
+      // Add Tailwind CSS instructions
+      enhancedPrompt += `\n\nIMPORTANT TAILWIND CSS INSTRUCTIONS:
+1. DO NOT create any separate CSS files or style sheets - we're using Tailwind CSS via CDN
+2. DO NOT import any CSS files in your components or JavaScript files (NOT index.css, NOT App.css, NOT style.css)
+3. Use ONLY Tailwind CSS utility classes directly in your HTML/JSX for styling
+4. The Tailwind CSS CDN is already included in the public/index.html file:
+   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+5. DO NOT include tailwind.config.js or postcss.config.js files
+6. DO NOT add any CSS-in-JS libraries or other styling dependencies
+7. If you need custom styles, use Tailwind's arbitrary value syntax directly in the className
+   For example: className="bg-[#custom-color] text-[24px]"`;
+
+      // Add explicit instructions to prevent component import errors
+      enhancedPrompt += `\n\nCRITICAL COMPONENT IMPORT RULES:
+1. EVERY component you create MUST be properly exported
+2. Always check that you've imported any component you use in a file
+3. Make sure to use proper export statements:
+   - For default exports: export default ComponentName;
+   - For named exports: export function/const ComponentName
+4. When importing components, be careful with default vs named imports:
+   - For default exports: import ComponentName from './path'
+   - For named exports: import { ComponentName } from './path'
+5. NEVER use a component in JSX before it's imported or defined
+6. For any external libraries, verify the component name and import path
+7. DO NOT create circular dependencies between files
+8. ALWAYS define and export all components you reference in other files`;
 
       // Generate response from Gemini AI
       const response = await generateWebApp(
@@ -866,6 +1116,24 @@ export default reportWebVitals;
         },
       };
 
+      // Process all files to remove any CSS imports
+      newFiles.forEach((file) => {
+        if (
+          file.language === "javascript" ||
+          file.language === "typescript" ||
+          file.language === "jsx" ||
+          file.language === "tsx"
+        ) {
+          // Remove any CSS imports (including style.css, App.css, index.css)
+          const cssImportRegex =
+            /import\s+['"]\.\/.*\.css['"];?|import\s+['"]\.\.\/.*\.css['"];?|import\s+['"]\.\/.+\/.*\.css['"];?/g;
+          file.content = file.content.replace(
+            cssImportRegex,
+            "// CSS import removed - using Tailwind CSS via CDN"
+          );
+        }
+      });
+
       // Add package.json to the files
       newFiles.push({
         id: uuidv4(),
@@ -993,437 +1261,435 @@ export default reportWebVitals;
   };
 
   // Function to compile files for preview
-  const compileFiles = useCallback(() => {
-    if (!fileSystem.files.length) return "";
+  const compileFiles = (): ProjectFiles => {
+    // Create project files from the file system
+    const files: ProjectFiles = {};
 
-    // Prepare files for StackBlitz in the correct format
-    const projectFiles: Record<string, string> = {};
-
-    // Process all files
+    // Add all user-created files
     fileSystem.files.forEach((file) => {
-      // Normalize path - remove leading slash and ensure proper structure
-      let filePath = file.path.startsWith("/")
-        ? file.path.substring(1)
+      // Normalize file path for StackBlitz
+      const normalizedPath = file.path.startsWith("/")
+        ? file.path.slice(1)
         : file.path;
-
-      // For any code files not in src/ or specific config files, place them in src/
-      if (
-        !filePath.startsWith("src/") &&
-        !filePath.match(
-          /^(package\.json|tailwind\.config\.js|postcss\.config\.js|tsconfig\.json|public\/.*|README\.md)$/
-        )
-      ) {
-        filePath = `src/${filePath}`;
-      }
-
-      // Add file to project with correct format
-      projectFiles[filePath] = file.content;
+      files[normalizedPath] = file.content;
     });
 
-    // Ensure we have essential files
-    if (!projectFiles["src/index.tsx"] && !projectFiles["src/index.js"]) {
-      projectFiles["src/index.tsx"] = AppTemplates.INDEX_JS;
+    // Ensure we have essential files for create-react-app template
+
+    // Add public/index.html if missing
+    if (!files["public/index.html"]) {
+      files["public/index.html"] = `
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta
+      name="description"
+      content="Web site created using create-react-app"
+    />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <title>React App</title>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>
+      `;
+    } else {
+      // If the file exists, ensure it has the Tailwind CDN script
+      const htmlContent = files["public/index.html"];
+      if (!htmlContent.includes("@tailwindcss/browser")) {
+        // Insert the script before the </head> tag
+        files["public/index.html"] = htmlContent.replace(
+          "</head>",
+          '    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>\n  </head>'
+        );
+      }
     }
 
-    // Add reportWebVitals if it doesn't exist but is referenced
-    const hasReportWebVitalsImport = Object.values(projectFiles).some(
-      (fileContent) =>
-        fileContent.includes("import reportWebVitals from") ||
-        fileContent.includes("import reportWebVitals from")
+    // Remove any CSS files that might conflict with Tailwind
+    const cssFilesToKeep = ["src/index.css"]; // Keep only essential CSS files
+    Object.keys(files).forEach((path) => {
+      if (path.endsWith(".css") && !cssFilesToKeep.includes(path)) {
+        delete files[path];
+        console.log(
+          `Removed CSS file ${path} to prevent conflicts with Tailwind CSS`
+        );
+      }
+    });
+
+    // Ensure index.css is minimal and only includes base styles
+    if (!files["src/index.css"]) {
+      files["src/index.css"] = `
+/* Base styles only - using Tailwind CSS for components */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+      `;
+    }
+
+    // Add src/index.js if missing (create-react-app requires this)
+    if (!files["src/index.js"] && !files["src/index.tsx"]) {
+      files["src/index.js"] = `
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './index.css';
+import App from './App';
+import reportWebVitals from './reportWebVitals';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+reportWebVitals();
+      `;
+    }
+
+    // Add basic App.js if missing
+    if (!files["src/App.js"] && !files["src/App.tsx"]) {
+      files["src/App.js"] = `
+import React from 'react';
+// No CSS import - using Tailwind directly
+
+function App() {
+  return (
+    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center text-center p-4">
+      <header className="bg-white shadow-lg rounded-lg p-6 max-w-md w-full">
+        <h1 className="text-3xl font-bold text-gray-800">My Web App</h1>
+        <p className="mt-2 text-gray-600">Edit src/App.js to start building your application</p>
+      </header>
+    </div>
+  );
+}
+
+export default App;
+      `;
+    }
+
+    // Check for App.css import in App.js or App.tsx and remove it
+    const appFiles = ["src/App.js", "src/App.tsx"].filter(
+      (path) => files[path]
     );
-
-    if (hasReportWebVitalsImport && !projectFiles["src/reportWebVitals.js"]) {
-      projectFiles["src/reportWebVitals.js"] = AppTemplates.REPORT_WEB_VITALS;
-    }
-
-    // Add index.css if it doesn't exist
-    if (!projectFiles["src/index.css"]) {
-      projectFiles["src/index.css"] = AppTemplates.INDEX_CSS;
-    }
-
-    // Add index.html if it doesn't exist
-    if (!projectFiles["public/index.html"]) {
-      projectFiles["public/index.html"] = AppTemplates.INDEX_HTML;
-    }
-
-    // Add tailwind.config.js if it doesn't exist
-    if (!projectFiles["tailwind.config.js"]) {
-      projectFiles["tailwind.config.js"] = AppTemplates.TAILWIND_CONFIG;
-    }
-
-    // Add postcss.config.js if it doesn't exist
-    if (!projectFiles["postcss.config.js"]) {
-      projectFiles["postcss.config.js"] = AppTemplates.POSTCSS_CONFIG;
-    }
-
-    // Add package.json if it doesn't exist
-    if (!projectFiles["package.json"]) {
-      projectFiles["package.json"] = AppTemplates.PACKAGE_JSON;
-    }
-
-    // Special handling for React errors - ensure compatibility
-    // Replace any React 19 references with React 18
-    Object.keys(projectFiles).forEach((filePath) => {
-      // Fix React import versions in all files
-      if (
-        filePath.endsWith(".tsx") ||
-        filePath.endsWith(".jsx") ||
-        filePath.endsWith(".ts") ||
-        filePath.endsWith(".js")
-      ) {
-        // Replace React 19 imports with React 18
-        projectFiles[filePath] = projectFiles[filePath]
-          .replace(/from ['"]react@19[\d.]+['"]/g, 'from "react"')
-          .replace(/from ['"]react-dom@19[\d.]+['"]/g, 'from "react-dom"');
-
-        // Add extra safeguards for useContext issues
-        if (
-          projectFiles[filePath].includes("useContext") &&
-          !projectFiles[filePath].includes("import React")
-        ) {
-          // Make sure React is imported if useContext is used
-          projectFiles[
-            filePath
-          ] = `import React from 'react';\n${projectFiles[filePath]}`;
-        }
+    appFiles.forEach((path) => {
+      if (files[path] && files[path].includes("import './App.css'")) {
+        files[path] = files[path].replace(
+          "import './App.css';",
+          "// Using Tailwind CSS - no CSS import needed"
+        );
+        console.log(`Removed App.css import from ${path}`);
       }
     });
 
-    // Log the files we're sending to the editor for debugging
-    console.log("Files being sent to editor:", Object.keys(projectFiles));
+    // Add reportWebVitals.js if missing
+    if (!files["src/reportWebVitals.js"]) {
+      files["src/reportWebVitals.js"] = `
+const reportWebVitals = (onPerfEntry) => {
+  if (onPerfEntry && onPerfEntry instanceof Function) {
+    import('web-vitals').then(({ getCLS, getFID, getFCP, getLCP, getTTFB }) => {
+      getCLS(onPerfEntry);
+      getFID(onPerfEntry);
+      getFCP(onPerfEntry);
+      getLCP(onPerfEntry);
+      getTTFB(onPerfEntry);
+    });
+  }
+};
 
-    // Create project directly with our files
-    return `
+export default reportWebVitals;
+      `;
+    }
+
+    // Replace any React 19 references with React 18 for compatibility
+    for (const path in files) {
+      // Check for React 19 imports
+      files[path] = files[path].replace(
+        /from ['"]react[@]?19['"]|from ['"]react['"].*version.*19/g,
+        'from "react"'
+      );
+
+      // Fix useContext issues
+      files[path] = files[path].replace(
+        /const \w+ = useContext\(\);/g,
+        "const context = useContext(MyContext);"
+      );
+    }
+
+    return files;
+  };
+
+  // Function to handle the loading of the preview iframe
+  const handlePreviewLoad = () => {
+    // Set loading state to false when the preview is loaded
+    setIsPreviewLoading(false);
+  };
+
+  // Call initializeEditor when the component mounts or when triggered manually
+  useEffect(() => {
+    if (fileSystem.files.length > 0) {
+      // Set loading state to true when initializing
+      setIsPreviewLoading(true);
+      // Only initialize when there are files to display
+      initializeEditor();
+    }
+  }, [fileSystem.files.length, previewKey]);
+
+  // Function to force reload the editor
+  const handleReloadEditor = () => {
+    setPreviewKey((prev) => prev + 1);
+  };
+
+  const initializeEditor = async () => {
+    try {
+      console.log("Initializing StackBlitz editor...");
+
+      // Notify parent window that preview is loading
+      window.parent.postMessage({ type: "preview-loading" }, "*");
+
+      // Use the imported SDK directly
+      if (!stackblitzSdk) {
+        console.error("StackBlitz SDK not found");
+        throw new Error(
+          "StackBlitz SDK could not be loaded from local package"
+        );
+      }
+
+      // Check if the embed element exists
+      const embedElement = document.getElementById("embed");
+      if (!embedElement) {
+        console.error("No element with ID 'embed' found in the DOM");
+        throw new Error("Embed container element not found");
+      }
+
+      // Add company logo to the bottom-left of the editor
+      const COMPANY_LOGO_URL = "https://zenvibe.ai/img/logo-simple.svg";
+
+      // Get project files from compileFiles function
+      const compiledFiles = compileFiles();
+      console.log("Compiled files:", Object.keys(compiledFiles));
+
+      // Create an instance of the editor
+      console.log("Creating StackBlitz project...");
+      const project = stackblitzSdk.embedProject(
+        "embed",
+        {
+          title: "Web App",
+          description: "Web App with Modern UI",
+          template: "create-react-app", // This is the correct template
+          files: compiledFiles,
+          dependencies: {
+            // React and core dependencies - lock to stable versions
+            react: "^18.2.0", // Use stable version 18 instead of 19
+            "react-dom": "^18.2.0",
+            "@types/node": "^16.18.0",
+            "@types/react": "^18.2.0",
+            "@types/react-dom": "^18.2.0",
+            typescript: "^4.9.5",
+
+            // Add web-vitals to avoid errors with reportWebVitals
+            "web-vitals": "^2.1.4",
+
+            // Remove all styling dependencies as we're using Tailwind via CDN
+            // Note: We keep references to Tailwind in package.json for developer tooling
+            // but the actual CSS is served via CDN
+
+            // Common UI libraries
+            "@headlessui/react": "^1.7.17",
+            "@heroicons/react": "^2.0.18",
+            "lucide-react": "^0.294.0",
+            clsx: "^2.0.0",
+            "class-variance-authority": "^0.7.0",
+
+            // Utilities
+            uuid: "^9.0.0",
+            "@types/uuid": "^9.0.7",
+            "date-fns": "^2.30.0",
+            lodash: "^4.17.21",
+            "@types/lodash": "^4.14.202",
+
+            // Form handling
+            "react-hook-form": "^7.49.2",
+            zod: "^3.22.4",
+            "@hookform/resolvers": "^3.3.2",
+
+            // Animation
+            "framer-motion": "^10.16.16",
+
+            // State management
+            zustand: "^4.4.7",
+            jotai: "^2.6.0",
+
+            // Data fetching
+            axios: "^1.6.2",
+            "@tanstack/react-query": "^5.14.2",
+
+            // Routing
+            "react-router-dom": "^6.21.0",
+
+            // Charts and visualization
+            recharts: "^2.10.3",
+
+            // Remove colors and themes since we're using Tailwind via CDN
+          },
+          settings: {
+            compile: {
+              clearConsole: false,
+              trigger: "auto",
+            },
+          },
+        },
+        {
+          openFile: "src/App.js", // Default to open the main App file
+          hideNavigation: true, // Hide navigation bar at top
+          hideDevTools: true, // Hide console/dev tools
+          hideExplorer: false,
+          showSidebar: false, // Hide sidebar
+          devToolsHeight: 0, // Set dev tools height to 0 to hide completely
+          forceEmbedLayout: true,
+          theme: "dark",
+          clickToLoad: false,
+          view: "preview", // Always open in preview mode by default
+        }
+      );
+
+      // Add logo to editor when it's ready
+      project
+        .then((vm: any) => {
+          // Add observer to watch for changes in DOM
+          const observer = new MutationObserver((mutations) => {
+            // Check for the bottom bar to be added
+            const bottomBar = document.querySelector(".stackblitz-bottom-bar");
+            if (bottomBar) {
+              // Add logo to the bottom-left
+              const logo = document.createElement("img");
+              logo.src = COMPANY_LOGO_URL;
+              logo.style.position = "absolute";
+              logo.style.bottom = "10px";
+              logo.style.left = "10px";
+              logo.style.height = "24px";
+              logo.style.zIndex = "1000";
+              document.body.appendChild(logo);
+
+              // Once we've added the logo, disconnect the observer
+              observer.disconnect();
+            }
+          });
+
+          // Start observing the document
+          observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+          });
+        })
+        .catch((error: Error) => {
+          console.error("Error creating StackBlitz VM:", error);
+        });
+    } catch (error: unknown) {
+      console.error("Error initializing editor:", error);
+
+      // Show error message in the iframe
+      const embedElement = document.getElementById("embed");
+      if (embedElement) {
+        embedElement.innerHTML = `
+          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 20px; color: #e74c3c; text-align: center; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <h2 style="margin-top: 16px; margin-bottom: 8px;">Failed to load editor</h2>
+            <p style="margin-bottom: 16px;">Unable to initialize the code editor component. ${
+              error instanceof Error ? error.message : "Unknown error"
+            }</p>
+            <button onclick="window.location.reload()" style="background: #4a5568; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+              Reload Editor
+            </button>
+          </div>
+        `;
+      }
+    }
+  };
+
+  // Convert ProjectFiles to string for srcDoc
+  const getHtmlContent = () => {
+    const files = compileFiles();
+    let htmlContent = `
       <!DOCTYPE html>
       <html>
         <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Web App Preview</title>
-          <script src="https://unpkg.com/@stackblitz/sdk@1/bundles/sdk.umd.js"></script>
+          <meta charset="utf-8">
+          <title>Web App</title>
           <style>
-            body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
-            .loading { 
-              display: flex; 
-              flex-direction: column; 
-              align-items: center; 
-              justify-content: center; 
-              height: 100vh; 
-              font-family: system-ui, -apple-system, sans-serif;
+            body { 
+              font-family: system-ui, sans-serif; 
+              margin: 0;
+              padding: 0;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              height: 100vh;
+              background-color: #f5f5f5;
+            }
+            .loading {
+              text-align: center;
+              padding: 2rem;
+            }
+            .loading h2 {
+              color: #3b82f6;
+              margin-bottom: 1rem;
             }
             .spinner {
               width: 40px;
               height: 40px;
-              border: 3px solid rgba(55, 125, 255, 0.2);
+              margin: 0 auto 1rem;
+              border: 3px solid rgba(59, 130, 246, 0.2);
+              border-top-color: #3b82f6;
               border-radius: 50%;
-              border-top-color: rgb(55, 125, 255);
-              animation: spin 1s ease-in-out infinite;
-              margin-bottom: 16px;
+              animation: spin 1s linear infinite;
             }
             @keyframes spin {
               to { transform: rotate(360deg); }
             }
-            #embed { height: 100vh; width: 100%; border: none; }
-            
-            /* Custom styles for editor */
-            :root {
-              --ring-color: rgb(59 130 246);
-            }
-            
-            /* Hide unnecessary elements */
-            .ProjectTitleBar-module_container__*,
-            .EditorFooter-module_container__*,
-            .StatusBar-module_container__*,
-            [class*="StatusBar"],
-            [class*="EditorFooter"],
-            [class*="ProjectTitleBar"] { 
-              display: none !important; 
-            }
-            
-            /* Custom overlay for StackBlitz logo */
-            .StackBlitzLogo {
-              position: relative;
-            }
-            
-            .StackBlitzLogo::after {
-              content: "";
-              position: absolute;
-              top: 0;
-              left: 0;
-              right: 0;
-              bottom: 0;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              z-index: 100;
-            }
-            
-            /* Additional style to ensure the logo is hidden */
-            [class*="StackBlitzLogo"] img {
-              opacity: 0;
-            }
-            
-            /* Additional styles to force hide bottom elements */
-            .ViewPort-module_container__* {
-              padding-bottom: 0 !important;
-            }
-            
-            .Editor-module_container__* {
-              margin-bottom: 0 !important;
-            }
-            
-            /* Ensure no space is reserved for hidden elements */
-            .Layout-module_container__* {
-              grid-template-rows: 1fr !important;
-            }
-            
-            /* Move editor tabs to top */
-            .ViewPort-module_container__* {
-              display: flex !important;
-              flex-direction: column !important;
-            }
-            
-            .ViewPort-module_editors__* {
-              order: 1 !important;
-            }
-            
-            .ViewPort-module_preview__* {
-              order: 2 !important;
-            }
-            
-            /* Style the editor/preview tabs */
-            .TabList-module_container__* {
-              background: #1a1a1a !important;
-              border-bottom: 1px solid #2d2d2d !important;
-              padding: 8px 16px !important;
-            }
-            
-            .Tab-module_container__* {
-              color: #e5e5e5 !important;
-              font-size: 14px !important;
-              padding: 6px 12px !important;
-              border-radius: 6px !important;
-            }
-            
-            .Tab-module_container__*:hover {
-              background: rgba(255, 255, 255, 0.1) !important;
-            }
-            
-            .Tab-module_selected__* {
-              background: var(--ring-color) !important;
-              color: white !important;
-            }
-            
-            /* Company logo in bottom left of preview */
-            .bk-company-logo {
-              position: fixed;
-              bottom: 0;
-              left: 16px;
-              height: 40px;
-              z-index: 9999;
-              font-weight: bold;
-              font-size: 14px;
-              background: linear-gradient(to right, #3B82F6, #8B5CF6);
-              -webkit-background-clip: text;
-              -webkit-text-fill-color: transparent;
-              text-shadow: 0 1px 2px rgba(0,0,0,0.1);
-              pointer-events: none;
-              font-family: system-ui, -apple-system, sans-serif;
-              padding: 0;
-              display: flex;
-              align-items: center;
-            }
-            
-            /* Override StackBlitz editor bottom bar */
-            .__stk-bottom_bar {
-              background-color: #242424 !important;
-            }
           </style>
         </head>
         <body>
-          <div id="embed">
-            <div class="loading">
-              <div class="spinner"></div>
-              <p>Loading editor...</p>
-            </div>
+          <div class="loading">
+            <div class="spinner"></div>
+            <h2>Loading Preview</h2>
+            <p>Initializing your web application...</p>
           </div>
-
           <script>
-            // Notify parent window that preview is loading
-            if (window.parent) {
-              window.parent.postMessage('preview-loading', '*');
-            }
-
-            document.addEventListener('DOMContentLoaded', function() {
-              try {
-                const sdk = StackBlitzSDK;
-                if (!sdk) {
-                  throw new Error('Editor SDK failed to load');
-                }
-
-                // Add company logo to bottom left
-                // const companyLogo = document.createElement('div');
-                // companyLogo.className = 'bk-company-logo';
-                // companyLogo.textContent = 'BK ZenVibe';
-                // document.body.appendChild(companyLogo);
-                
-                // Use MutationObserver to detect when the bottom bar is added
-                const observer = new MutationObserver((mutations) => {
-                  const bottomBar = document.querySelector('.__stk-bottom_bar');
-                  if (bottomBar) {
-                    // Clean up any existing logos that might have been added to the document body
-                    document.querySelectorAll('.bk-company-logo').forEach(logo => {
-                      if (logo !== companyLogo) {
-                        logo.remove();
-                      }
-                    });
-                    
-                    // Move our logo to the bottom bar
-                    if (companyLogo.parentElement !== bottomBar) {
-                      bottomBar.appendChild(companyLogo);
-                    }
-                    
-                    // Disconnect once we've found and updated the logo
-                    observer.disconnect();
-                  }
-                });
-                
-                // Start observing the document for changes
-                observer.observe(document.body, { 
-                  childList: true, 
-                  subtree: true 
-                });
-
-                // Create project with our files
-                sdk.embedProject(
-                  'embed',
-                  {
-                    title: 'Web App',
-                    description: 'Web App with Modern UI',
-                    template: 'create-react-app',
-                    files: ${JSON.stringify(projectFiles)},
-                    dependencies: {
-                      // React and core dependencies - lock to stable versions
-                      "react": "^18.2.0", // Use stable version 18 instead of 19
-                      "react-dom": "^18.2.0",
-                      "@types/node": "^16.18.0",
-                      "@types/react": "^18.2.0",
-                      "@types/react-dom": "^18.2.0",
-                      "typescript": "^4.9.5",
-                      
-                      // Add web-vitals to avoid errors with reportWebVitals
-                      "web-vitals": "^2.1.4",
-                      
-                      // Styling dependencies
-                      "tailwindcss": "^3.3.0",
-                      "postcss": "^8.4.31",
-                      "autoprefixer": "^10.4.16",
-                      
-                      // Common UI libraries
-                      "@headlessui/react": "^1.7.17",
-                      "@heroicons/react": "^2.0.18",
-                      "lucide-react": "^0.294.0",
-                      "clsx": "^2.0.0",
-                      "class-variance-authority": "^0.7.0",
-                      
-                      // Utilities
-                      "uuid": "^9.0.0",
-                      "@types/uuid": "^9.0.7",
-                      "date-fns": "^2.30.0",
-                      "lodash": "^4.17.21",
-                      "@types/lodash": "^4.14.202",
-                      
-                      // Form handling
-                      "react-hook-form": "^7.49.2",
-                      "zod": "^3.22.4",
-                      "@hookform/resolvers": "^3.3.2",
-                      
-                      // Animation
-                      "framer-motion": "^10.16.16",
-                      
-                      // State management
-                      "zustand": "^4.4.7",
-                      "jotai": "^2.6.0",
-                      
-                      // Data fetching
-                      "axios": "^1.6.2",
-                      "@tanstack/react-query": "^5.14.2",
-                      
-                      // Routing
-                      "react-router-dom": "^6.21.0",
-                      
-                      // Charts and visualization
-                      "recharts": "^2.10.3",
-                      
-                      // Colors and themes
-                      "tailwindcss-animate": "^1.0.7",
-                      "color": "^4.2.3",
-                      "@types/color": "^3.0.6"
-                    },
-                    settings: {
-                      compile: {
-                        clearConsole: false,
-                        trigger: 'auto'
-                      }
-                    }
-                  },
-                  {
-                    openFile: 'src/App.tsx',
-                    layout: 'preview',
-                    hideNavigation: true,
-                    hideDevTools: true,
-                    hideExplorer: false,
-                    showSidebar: false,
-                    devToolsHeight: 0,
-                    forceEmbedLayout: true,
-                    theme: 'dark',
-                    clickToLoad: false,
-                    view: 'preview',
-                    showCustomDevTools: false
-                  }
-                ).then(vm => {
-                  console.log('Editor VM ready');
-                  // Notify parent when preview is loaded
-                  if (window.parent) {
-                    window.parent.postMessage('preview-loaded', '*');
-                  }
-                }).catch(err => {
-                  console.error('Failed to create editor project:', err);
-                  document.getElementById('embed').innerHTML = 
-                    '<div style="padding: 20px; font-family: system-ui; color: #333;">' +
-                    '<h2 style="color: #e53e3e;">Editor Error</h2>' +
-                    '<p>' + err.toString() + '</p>' +
-                    '<p>Please check the console for more details.</p>' +
-                    '</div>';
-                  
-                  if (window.parent) {
-                    window.parent.postMessage('preview-loaded', '*');
-                  }
-                });
-              } catch (err) {
-                console.error('Error initializing editor:', err);
-                document.getElementById('embed').innerHTML = 
-                  '<div style="padding: 20px; font-family: system-ui; color: #333;">' +
-                  '<h2 style="color: #e53e3e;">Editor Error</h2>' +
-                  '<p>' + err.toString() + '</p>' +
-                  '<p>Please check your network connection and try again.</p>' +
-                  '</div>';
-                
-                if (window.parent) {
-                  window.parent.postMessage('preview-loaded', '*');
-                }
-              }
-            });
+            // Signal to parent that we're loading
+            window.parent.postMessage({ type: "preview-loading" }, "*");
           </script>
         </body>
-      </html>`;
-  }, [fileSystem.files]);
+      </html>
+    `;
 
-  // Function to handle preview load
-  const handlePreviewLoad = useCallback(() => {
-    console.log("Preview iframe loaded!");
-    setIsPreviewLoading(false);
-  }, []);
+    return htmlContent;
+  };
 
   return (
     <div className='min-h-screen bg-[#0D0D0D]'>
@@ -2297,13 +2563,22 @@ export default reportWebVitals;
                 </h4>
               </div>
             </div>
-            <iframe
-              key={previewKey}
-              className='w-full h-full border-none rounded-tl-xl backdrop-blur z-10 relative'
-              srcDoc={compileFiles()}
-              onLoad={handlePreviewLoad}
-              sandbox='allow-scripts allow-same-origin allow-forms allow-popups'
+
+            {/* Replace the iframe with a div for StackBlitz SDK to embed into */}
+            <div
+              id='embed'
+              className='w-full h-full rounded-tl-xl backdrop-blur z-10 relative'
             />
+
+            {/* Fallback loading HTML only shown when the editor is loading */}
+            {isPreviewLoading && (
+              <iframe
+                className='w-full h-full border-none rounded-tl-xl backdrop-blur z-10 absolute top-0 left-0'
+                srcDoc={getHtmlContent()}
+                onLoad={handlePreviewLoad}
+                sandbox='allow-scripts allow-same-origin allow-forms allow-popups'
+              />
+            )}
           </div>
         </div>
       )}
