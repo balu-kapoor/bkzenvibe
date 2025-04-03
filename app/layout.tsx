@@ -3,7 +3,6 @@ import { Inter } from "next/font/google";
 import "@/styles/globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
-import Script from "next/script";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -19,17 +18,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang='en' suppressHydrationWarning>
-      <head>
-        <Script src='https://js.puter.com/v2/' strategy='beforeInteractive' />
-      </head>
       <body className={inter.className}>
         <ThemeProvider
           attribute='class'
-          defaultTheme='system'
-          enableSystem
+          defaultTheme='dark'
+          enableSystem={false}
           disableTransitionOnChange
+          storageKey='web-app-theme'
         >
-          <div className='min-h-screen flex flex-col'>{children}</div>
+          <div className='min-h-screen flex flex-col bg-white dark:bg-gray-900'>
+            {children}
+          </div>
           <Toaster />
         </ThemeProvider>
       </body>

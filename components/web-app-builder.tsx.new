@@ -1,0 +1,1 @@
+export function WebAppBuilder() { return <div>Fixed Component</div>; }
