@@ -23,6 +23,7 @@ import {
   ArrowUpCircle,
   FileIcon,
   Plus,
+  Globe,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -124,6 +125,7 @@ export function EnhancedChat({
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchResponseLoading, setSearchResponseLoading] = useState(false);
 
   // Add file validation constants
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB in bytes
@@ -572,7 +574,9 @@ export function EnhancedChat({
   };
 
   // Add the function to perform web search
-  async function performWebSearch(query: string): Promise<string> {
+  async function performWebSearch(
+    query: string
+  ): Promise<{ success: boolean; results: string; error?: string }> {
     try {
       const response = await fetch("/api/web-search", {
         method: "POST",
@@ -582,15 +586,40 @@ export function EnhancedChat({
         body: JSON.stringify({ query }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error("Web search failed");
+        return {
+          success: false,
+          results: "",
+          error:
+            data.error ||
+            `Search failed with status: ${response.status} ${response.statusText}`,
+        };
       }
 
-      const data = await response.json();
-      return data.results;
+      if (data.error) {
+        return {
+          success: false,
+          results: "",
+          error: data.error,
+        };
+      }
+
+      return {
+        success: true,
+        results:
+          data.results && data.results.length > 0
+            ? data.results[0].content
+            : "",
+      };
     } catch (error) {
       console.error("Web search error:", error);
-      return "";
+      return {
+        success: false,
+        results: "",
+        error: error instanceof Error ? error.message : "Unknown search error",
+      };
     }
   }
 
@@ -656,11 +685,15 @@ export function EnhancedChat({
           const searchQuery = `${
             userMessage.content
           } ${new Date().toLocaleDateString()}`;
-          const webSearchResult = await performWebSearch(searchQuery);
+          const searchResponse = await performWebSearch(searchQuery);
 
-          if (webSearchResult) {
-            realTimeContext = webSearchResult;
+          if (searchResponse.success && searchResponse.results) {
+            realTimeContext = searchResponse.results;
           } else {
+            console.log(
+              "Using fallback context due to search error:",
+              searchResponse.error
+            );
             realTimeContext = getRealTimeContext(category);
           }
         } catch (error) {
@@ -855,54 +888,80 @@ export function EnhancedChat({
       },
     ]);
 
+    // Set search response loading to true to show the placeholder animation
+    setSearchResponseLoading(true);
+
     try {
-      const response = await fetch("/api/web-search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query }),
-      });
+      // Short delay to ensure the animation is visible for at least a moment
+      const minDelay = new Promise((resolve) => setTimeout(resolve, 800));
 
-      if (!response.ok) {
-        throw new Error("Search failed");
-      }
+      // Perform the search using our improved function
+      const searchResponse = await performWebSearch(query);
 
-      const data = await response.json();
+      // Wait for the minimum delay to complete
+      await minDelay;
 
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      if (data.results && data.results.length > 0) {
+      if (searchResponse.success && searchResponse.results) {
         // Add the Gemini-processed search results as an assistant message
         setMessages((prev) => [
           ...prev,
           {
             role: "assistant",
-            content: data.results[0].content,
+            content: searchResponse.results,
             timestamp: new Date().toISOString(),
           },
         ]);
       } else {
+        // Handle search error with a more helpful message
+        const errorMessage = searchResponse.error || "No search results found.";
+        const userFriendlyMessage = `I couldn't complete the web search. ${
+          errorMessage.includes("API")
+            ? "There seems to be an issue with the search service."
+            : errorMessage
+        }`;
+
         setMessages((prev) => [
           ...prev,
           {
             role: "assistant",
-            content: "No results found.",
+            content: userFriendlyMessage,
             timestamp: new Date().toISOString(),
           },
         ]);
-      }
 
-      setIsSearching(false);
+        // Only show toast for technical errors
+        if (errorMessage.includes("API") || errorMessage.includes("failed")) {
+          toast({
+            title: "Search Service Issue",
+            description:
+              "The web search service is currently unavailable. Please try again later.",
+            variant: "destructive",
+          });
+        }
+      }
     } catch (error) {
       console.error("Search error:", error);
+
+      // Add a user-friendly error message
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            "I'm having trouble connecting to the search service. Please try again later.",
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+
       toast({
         title: "Search Error",
         description:
-          error instanceof Error ? error.message : "Failed to perform search",
+          "There was a problem with the search service. Please try again later.",
         variant: "destructive",
       });
+    } finally {
       setIsSearching(false);
+      setSearchResponseLoading(false);
     }
   };
 
@@ -989,13 +1048,13 @@ export function EnhancedChat({
               </div>
             ))}
 
-            {isLoading && (
+            {(isLoading || searchResponseLoading) && (
               <div className='flex items-start gap-2 sm:gap-3 rounded-lg p-2 sm:p-4 bg-primary/10'>
                 <div className='h-6 w-6 sm:h-8 sm:w-8 rounded-full overflow-hidden flex-shrink-0'>
                   <AIBotIcon />
                 </div>
                 <div className='flex-1 min-w-0 space-y-1 sm:space-y-2 overflow-hidden'>
-                  {streamingContent ? (
+                  {streamingContent && !searchResponseLoading ? (
                     <div className='relative'>
                       <AnimatedMessageContent
                         content={streamingContent}
@@ -1010,10 +1069,16 @@ export function EnhancedChat({
                         <div className='h-4 sm:h-5 w-full bg-primary/25 dark:bg-primary/40 animate-pulse rounded-md'></div>
                         <div className='h-4 sm:h-5 w-2/3 bg-primary/25 dark:bg-primary/40 animate-pulse rounded-md'></div>
                       </div>
+                      {searchResponseLoading && (
+                        <div className='flex items-center gap-2 text-xs text-muted-foreground'>
+                          <Loader2 className='h-3 w-3 animate-spin' />
+                          <span>Searching the web...</span>
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {isStreamStuck && (
+                  {isStreamStuck && !searchResponseLoading && (
                     <div className='mt-3 sm:mt-4 p-2 sm:p-3 bg-yellow-100/50 dark:bg-yellow-900/50 rounded-lg text-xs sm:text-sm border border-yellow-200 dark:border-yellow-800'>
                       <p className='text-yellow-800 dark:text-yellow-200'>
                         Taking longer than expected. You can:
@@ -1115,7 +1180,7 @@ export function EnhancedChat({
                   isSearchMode ? "Switch to chat mode" : "Switch to search mode"
                 }
               >
-                <Search className='h-4 w-4' />
+                <Globe className='h-4 w-4' />
               </Button>
 
               <div className='h-4 w-px bg-muted-foreground/20' />
